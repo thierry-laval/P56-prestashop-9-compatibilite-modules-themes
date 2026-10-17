@@ -1,4 +1,4 @@
-# ![Logo Thierry Laval](img/logo.png "Logo Thierry Laval")
+# ![Logo Thierry Laval](https://raw.githubusercontent.com/thierry-laval/archives/master/images/logo-portfolio.png "Logo Thierry Laval")
 
 <a id="top"></a>
 
@@ -14,7 +14,7 @@
 
 ## 📎 Projet
 
-**ps9compatible** — Vérificateur de compatibilité PrestaShop 9 pour modules et thèmes : audit statique du code qui empêche l'installation ou le fonctionnement d'un module sur PrestaShop 9.
+**Vérificateur de compatibilité PrestaShop 9 pour modules et thèmes** audit statique du code qui empêche l'installation ou le fonctionnement d'un module sur PrestaShop 9.
 
 _Script `ps9compatible.php` + classes `src/Ps9Compatible/` + base `data/removed-api.php` (+ interface web WASM dans `web/`)_ — Version : **2.0.0** · Licence : **AFL-3.0**
 
@@ -716,24 +716,6 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 | WebAssembly (PHP-WASM) | Git / GitHub |
 | HTML5 / CSS3 (thème sombre) | Vite |
 | JavaScript (ES modules) | PrestaShop 1.7 / 8 / 9 |
-
-## 🖼️ Images du projet
-
-Toutes les images sont regroupées dans le dossier `img/` :
-
-| Fichier | Dimensions | Rôle |
-| --- | --- | --- |
-| `img/logo.png` | 800 × 168 | Logo thierrylaval.dev affiché dans l'en-tête du README et de l'interface web |
-| `img/Logo thierrylaval.dev blanc-bleu.png` | 800 × 168 | Logo d'origine, pleine résolution (copie de référence) |
-| `img/octocat-oley.png` | 2000 × 2000 | Illustration « fan de GitHub » du README |
-| `img/captures/` | — | Captures d'écran de l'interface web (à compléter) |
-
-* Le README référence `img/logo.png` et `img/octocat-oley.png` par des **chemins relatifs** : le rendu est donc correct sur GitHub comme en local, sans dépendre d'un dépôt externe.
-* L'interface web référence le même fichier via `../img/logo.png` ; `web/scripts/sync-assets.mjs` le copie dans `web/public/img/` au build, ce qui évite toute duplication de l'image.
-* Si vous ajoutez une capture d'écran, déposez-la dans `img/captures/` avec un nom explicite (par exemple `img/captures/interface-web.png`) et référencez-la en chemin relatif.
-* Ces images sont la propriété de leur auteur (voir la section [Licence](#-licence) et l'avis d'attribution ci-dessous).
-
----
 
 ## Merci à tous
 
