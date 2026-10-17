@@ -20,6 +20,8 @@ _Script `ps9compatible.php` + classes `src/Ps9Compatible/` + base `data/removed-
 
 _`Début du projet le 17/10/2026`_
 
+![Outil Prestashop 9](img/outils-prestashop9.jpg)
+
 ### Table des matières
 
 | Sommaire | Suite |
@@ -38,8 +40,8 @@ _`Début du projet le 17/10/2026`_
 | 12. [API et services externes](#api-et-services-externes) | 26. [Licence](#licence) |
 | 13. [Identifiants et comptes](#identifiants-et-comptes) | 27. [Avertissement](#avertissement) |
 | 14. [Mise à jour](#mise-à-jour) | 28. [Résumé de l'installation](#résumé-de-linstallation) |
-| 15. [Utilisation — Interface web](#utilisation--interface-web) | 29. [Images du projet](#-images-du-projet) |
-| 16. [Publication sur GitHub Pages](#-publication-sur-github-pages) | 30. [Merci à tous](#merci-à-tous) |
+| 15. [Utilisation — Interface web](#utilisation--interface-web) | 29. [Merci à tous](#merci-à-tous) |
+| 16. [Publication sur GitHub Pages](#-publication-sur-github-pages) |                               |
 
 <details>
 <summary><h3>📖 À propos du projet</h3></summary>
