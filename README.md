@@ -63,8 +63,6 @@ Aucun compte, aucune clé API et aucun service payant ne sont requis. Le scanner
 
 Le moteur est regroupé dans `ps9compatible.php` et ses classes dans `src/Ps9Compatible/`. La liste des éléments supprimés du core est isolée dans `data/removed-api.php`, afin de pouvoir être reconstruite sans toucher au code.
 
-</details>
-
 <details>
 <summary><h3>✨ Fonctionnalités</h3></summary>
 
