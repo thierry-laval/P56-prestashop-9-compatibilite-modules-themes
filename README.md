@@ -706,6 +706,8 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 
 </details>
 
+</details>
+
 ---
 
 ## Utilisé dans ce projet
