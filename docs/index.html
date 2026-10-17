@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ps9compatible — Vérificateur de compatibilité PrestaShop 9</title>
+  <meta name="description" content="Analyse un module ou un thème PrestaShop dans votre navigateur et liste le code incompatible avec PrestaShop 9. 100% local : aucun fichier n'est envoyé sur un serveur.">
+  <link rel="icon" type="image/png" href="./assets/logo-vxaXnmET.png">
+  <script type="module" crossorigin src="./assets/index-xMYyK0NS.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CTkrjFBf.css">
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="brand">
+        <a class="brand-link" href="https://thierrylaval.dev" target="_blank" rel="noopener" aria-label="thierrylaval.dev (nouvel onglet)">
+          <img class="brand-logo" src="./assets/logo-vxaXnmET.png" alt="thierrylaval.dev" width="260" height="64">
+        </a>
+        <span class="brand-sep" aria-hidden="true"></span>
+        <span class="brand-name">ps9compatible</span>
+      </div>
+      <h1>Vérificateur de compatibilité <span class="accent">PrestaShop&nbsp;9</span></h1>
+      <p class="subtitle">
+        Analysez un module ou un thème et découvrez le code qui casse sur PrestaShop&nbsp;9.
+        Le scan s'exécute <strong>entièrement dans votre navigateur</strong> — aucun fichier n'est envoyé
+        sur un serveur, tout reste sur votre machine.
+      </p>
+      <ul class="pills">
+        <li>100&nbsp;% local</li>
+        <li>PHP&nbsp;→&nbsp;WebAssembly</li>
+        <li>Aucune installation</li>
+      </ul>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel" id="drop-zone" tabindex="0" role="button" aria-label="Déposer un module ou un thème">
+      <div class="drop-inner">
+        <div class="drop-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M21 8.5 12 3 3 8.5v7L12 21l9-5.5v-7Z" stroke-linejoin="round"/>
+            <path d="M3 8.5 12 14l9-5.5M12 14v7" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="drop-title">Glissez le dossier du module ou du thème, ou un fichier <code>.zip</code> ici</p>
+        <p class="drop-or">ou</p>
+        <div class="drop-actions">
+          <label class="btn btn-primary" id="label-zip" for="file-zip" data-input="file-zip">
+            Choisir un ZIP
+          </label>
+          <input class="visually-hidden" type="file" id="file-zip" accept=".zip,application/zip">
+          <label class="btn" id="label-dir" for="file-dir" data-input="file-dir">
+            Choisir un dossier
+          </label>
+          <input class="visually-hidden" type="file" id="file-dir" webkitdirectory directory multiple>
+        </div>
+        <p class="hint">Un ZIP contient normalement un seul dossier portant le nom du module ou du thème. Le type de cible est détecté automatiquement (module ou thème).</p>
+      </div>
+    </section>
+
+    <section class="panel options" id="options-panel" hidden>
+      <div class="options-row">
+        <label class="field">
+          <span>Format de sortie</span>
+          <select id="opt-format">
+            <option value="text" selected>Texte</option>
+            <option value="json">JSON</option>
+            <option value="md">Markdown</option>
+            <option value="sarif">SARIF</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Gravité minimale</span>
+          <select id="opt-severity">
+            <option value="notice">Notice</option>
+            <option value="warning">Avertissement</option>
+            <option value="error" selected>Erreur</option>
+          </select>
+        </label>
+        <label class="field checkbox">
+          <input type="checkbox" id="opt-vendor">
+          <span>Analyser aussi <code>vendor/</code></span>
+        </label>
+        <label class="field">
+          <span>Type de cible</span>
+          <select id="opt-type">
+            <option value="auto" selected>Détection automatique</option>
+            <option value="module">Module</option>
+            <option value="theme">Thème</option>
+          </select>
+        </label>
+      </div>
+      <div class="options-row">
+        <button class="btn btn-primary" id="btn-scan" disabled>Lancer l'analyse</button>
+        <span class="status" id="status"></span>
+      </div>
+    </section>
+
+    <section class="panel results" id="results-panel" hidden>
+      <div class="results-head">
+        <h2>Rapport</h2>
+        <div class="results-actions">
+          <button class="btn btn-small" id="btn-copy">Copier</button>
+          <button class="btn btn-small" id="btn-download">Télécharger</button>
+        </div>
+      </div>
+      <div class="summary" id="summary"></div>
+      <pre class="output" id="output"></pre>
+    </section>
+
+    <section class="panel error" id="error-panel" hidden>
+      <h2>Erreur</h2>
+      <pre id="error-output"></pre>
+    </section>
+
+    <section class="notes">
+      <h2>Comment ça marche</h2>
+      <ul>
+        <li>Le module ou le thème est analysé par <code>ps9compatible.php</code> (le même script que le CLI), exécuté dans un
+          <strong>runtime PHP compilé en WebAssembly</strong> chargé dans la page.</li>
+        <li>L'analyse est <strong>statique</strong> : aucun code du module ou du thème n'est exécuté, les fichiers sont seulement lus
+          et découpés en tokens.</li>
+        <li>Les thèmes sont contrôlés comme les modules : présentateurs déplacés, hooks supprimés,
+          templates Smarty et pièges de migration (<code>classic</code> → <code>Hummingbird</code>).</li>
+        <li>Aucun envoi réseau : votre module ou votre thème ne quitte jamais votre navigateur.</li>
+      </ul>
+      <p class="disclaimer">
+        Un audit statique ne remplace pas un test réel. Testez toujours le module ou le thème sur une copie de votre boutique
+        avant de mettre à jour en production.
+      </p>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>
+      <a href="https://thierrylaval.dev">thierrylaval.dev</a> · Licence AFL 3.0
+    </p>
+  </footer>
+
+</body>
+</html>

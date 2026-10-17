@@ -1,0 +1,22 @@
+{
+  "name": "ps9compatible-web",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ps9compatible dans le navigateur via PHP-WASM (GitHub Pages)",
+  "scripts": {
+    "sync-assets": "node scripts/sync-assets.mjs",
+    "dev": "npm run sync-assets && vite",
+    "build": "npm run sync-assets && vite build",
+    "preview": "vite preview"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@php-wasm/universal": "^3.1.58",
+    "@php-wasm/web-8-4": "^3.1.54"
+  },
+  "devDependencies": {
+    "@php-wasm/node": "^3.1.58",
+    "vite": "^7.3.7"
+  }
+}

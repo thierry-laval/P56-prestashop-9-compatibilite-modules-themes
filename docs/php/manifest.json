@@ -1,0 +1,12 @@
+{
+  "files": [
+    "data/removed-api.php",
+    "ps9compatible.php",
+    "src/Ps9Compatible/Cache.php",
+    "src/Ps9Compatible/Cli.php",
+    "src/Ps9Compatible/Reporter.php",
+    "src/Ps9Compatible/Rules.php",
+    "src/Ps9Compatible/Scanner.php",
+    "src/Ps9Compatible/SymbolTable.php"
+  ]
+}

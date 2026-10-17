@@ -1,0 +1,20 @@
+* text=auto eol=lf
+
+# Archives et binaires : ne jamais les convertir en texte (Git les corromprait).
+*.zip binary
+
+# Binaires du build publié dans docs/ (GitHub Pages) : PHP compilé en WebAssembly.
+# Une conversion de fin de ligne ici casserait le runtime dans le navigateur.
+*.wasm binary
+*.so binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Le build docs/ ne doit pas apparaître dans les statistiques linguistiques
+# du dépôt (il est généré, non écrit à la main).
+docs/** linguist-generated=true

@@ -1,0 +1,53 @@
+# Éditeurs et IDE
+.idea/
+.vscode/
+
+# Archives et paquets distribués
+*.zip
+
+# Dépendances et artefacts intermédiaires de l'interface web
+web/node_modules/
+web/dist/
+web/.vite/
+# Copies générées au build par web/scripts/sync-assets.mjs (avant émission)
+web/public/php/
+web/public/img/
+
+# NB : le dossier docs/ est le build PUBLIÉ par GitHub Pages
+# (Settings > Pages > Branch: main / folder: /docs). Il est volontairement
+# VERSIONNÉ ici : GitHub Pages ne sert que du statique et n'exécute aucun build.
+# Régénérez-le avec "cd web && npm run build" puis committez docs/.
+
+# Cache du scanner
+.ps9compatible-cache/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Fichiers temporaires, journaux et sauvegardes
+*.log
+*.tmp
+*.temp
+*.swp
+*.bak
+*.orig
+*.rej
+*~
+.cache/
+
+# Rapports générés par le scanner (peuvent contenir des extraits de code)
+rapport.json
+rapport.sarif
+rapport.md
+ps9compatible-*.txt
+ps9compatible-*.json
+ps9compatible-*.md
+ps9compatible-*.sarif
+
