@@ -22,6 +22,9 @@ _`Début du projet le 17/10/2026`_
 
 ![Outil Prestashop 9](img/outils-prestashop9.jpg)
 
+<details>
+<summary><h3>📖 À propos du projet</h3></summary>
+
 ### Table des matières
 
 | Sommaire | Suite |
@@ -43,8 +46,6 @@ _`Début du projet le 17/10/2026`_
 | 15. [Utilisation — Interface web](#utilisation--interface-web) | 30. [Licence](#licence) |
 
 <a id="à-propos-du-projet"></a>
-<details id="à-propos-du-projet">
-<summary><h3>📖 À propos du projet</h3></summary>
 
 **ps9compatible** analyse un module ou un thème PrestaShop (dossier ou archive ZIP) et liste le code qui empêche son installation ou son fonctionnement sur PrestaShop 9 : classes, méthodes, constantes et hooks supprimés du core, présentateurs déplacés, fonctions PHP supprimées en 8.0, dépréciées en 8.1/8.2, directives INI disparues, pièges des thèmes (classic → Hummingbird), templates Smarty, JavaScript et déclarations de compatibilité `config.xml`.
 
@@ -63,8 +64,6 @@ Aucun compte, aucune clé API et aucun service payant ne sont requis. Le scanner
 > ⚠️ **Un audit ne remplace pas un test réel :** installez toujours le module sur une copie de la boutique avant de mettre à jour en production.
 
 Le moteur est regroupé dans `ps9compatible.php` et ses classes dans `src/Ps9Compatible/`. La liste des éléments supprimés du core est isolée dans `data/removed-api.php`, afin de pouvoir être reconstruite sans toucher au code.
-
-</details>
 
 <a id="fonctionnalités"></a>
 <details id="fonctionnalités">
@@ -780,6 +779,8 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
   - Moteur d'analyse basé sur le tokenizer PHP (`token_get_all`).
   - Sorties multiples : Texte coloré, JSON, Markdown, SARIF pour intégration CI.
   - Interface web autonome exécutant PHP-WASM directement dans le navigateur sans serveur distant.
+
+</details>
 
 </details>
 
