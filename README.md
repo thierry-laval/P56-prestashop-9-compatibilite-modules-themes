@@ -26,24 +26,24 @@ _`Début du projet le 17/10/2026`_
 
 | Sommaire | Suite |
 | :--- | :--- |
-| 1. [À propos du projet](#à-propos-du-projet) | 15. [Utilisation — Interface web](#utilisation--interface-web) |
-| 2. [Fonctionnalités](#fonctionnalités) | 16. [Utilisation — Ligne de commande (CLI)](#utilisation--ligne-de-commande-cli) |
-| 3. [Prérequis](#prérequis) | 17. [Moteur de détection](#moteur-de-détection) |
-| 4. [Installation](#installation) | 18. [Base de connaissances](#base-de-connaissances) |
-| 5. [Configuration](#configuration) | 19. [Cache](#cache) |
-| 6. [Exclusions (faux positifs)](#exclusions-faux-positifs) | 20. [Formats de sortie](#formats-de-sortie) |
-| 7. [Données stockées](#données-stockées) | 21. [Architecture](#architecture) |
-| 8. [Fichiers et répertoires importants](#fichiers-et-répertoires-importants) | 22. [Intégration en CI](#intégration-en-ci) |
-| 9. [Ce qui est vérifié](#ce-qui-est-vérifié) | 23. [Limites](#limites) |
-| 10. [Sécurité](#sécurité) | 24. [Dépannage](#dépannage) |
-| 11. [Variables d'environnement et configuration](#variables-denvironnement-et-configuration) | 25. [Feuille de route](#feuille-de-route) |
-| 12. [API et services externes](#api-et-services-externes) | 26. [Licence](#licence) |
-| 13. [Identifiants et comptes](#identifiants-et-comptes) | 27. [Avertissement](#avertissement) |
-| 14. [Mise à jour](#mise-à-jour) | 28. [Résumé de l'installation](#résumé-de-linstallation) |
-| 15. [Utilisation — Interface web](#utilisation--interface-web) | 29. [Merci à tous](#merci-à-tous) |
-| 16. [Publication sur GitHub Pages](#-publication-sur-github-pages) | 30. [Journal des modifications](#journal-des-modifications-changelog) |
+| 1. [À propos du projet](#à-propos-du-projet) | 16. [Publication sur GitHub Pages](#publication-sur-github-pages) |
+| 2. [Fonctionnalités](#fonctionnalités) | 17. [Utilisation — Ligne de commande (CLI)](#utilisation--ligne-de-commande-cli) |
+| 3. [Prérequis](#prérequis) | 18. [Moteur de détection](#moteur-de-détection) |
+| 4. [Installation](#installation) | 19. [Base de connaissances](#base-de-connaissances) |
+| 5. [Configuration](#configuration) | 20. [Cache](#cache) |
+| 6. [Exclusions (faux positifs)](#exclusions-faux-positifs) | 21. [Formats de sortie](#formats-de-sortie) |
+| 7. [Données stockées](#données-stockées) | 22. [Architecture](#architecture) |
+| 8. [Fichiers et répertoires importants](#fichiers-et-répertoires-importants) | 23. [Intégration en CI](#intégration-en-ci) |
+| 9. [Ce qui est vérifié](#ce-qui-est-vérifié) | 24. [Limites](#limites) |
+| 10. [Sécurité](#sécurité) | 25. [Dépannage](#dépannage) |
+| 11. [Variables d'environnement et configuration](#variables-denvironnement-et-configuration) | 26. [Feuille de route](#feuille-de-route) |
+| 12. [API et services externes](#api-et-services-externes) | 27. [Journal des modifications](#journal-des-modifications-changelog) |
+| 13. [Identifiants et comptes](#identifiants-et-comptes) | 28. [Utilisé dans ce projet](#utilisé-dans-ce-projet) |
+| 14. [Mise à jour](#mise-à-jour) | 29. [Merci à tous](#merci-à-tous) |
+| 15. [Utilisation — Interface web](#utilisation--interface-web) | 30. [Licence](#licence) |
 
-<details>
+<a id="à-propos-du-projet"></a>
+<details id="à-propos-du-projet">
 <summary><h3>📖 À propos du projet</h3></summary>
 
 **ps9compatible** analyse un module ou un thème PrestaShop (dossier ou archive ZIP) et liste le code qui empêche son installation ou son fonctionnement sur PrestaShop 9 : classes, méthodes, constantes et hooks supprimés du core, présentateurs déplacés, fonctions PHP supprimées en 8.0, dépréciées en 8.1/8.2, directives INI disparues, pièges des thèmes (classic → Hummingbird), templates Smarty, JavaScript et déclarations de compatibilité `config.xml`.
@@ -59,11 +59,15 @@ Aucun compte, aucune clé API et aucun service payant ne sont requis. Le scanner
 
 > **Périmètre :** l'analyse est **statique**. Le code du module n'est jamais exécuté : les fichiers sont seulement lus et découpés en tokens par le tokenizer PHP (`token_get_all`). Un audit statique **oriente** les vérifications, il ne garantit pas qu'un module fonctionnera sur PrestaShop 9.
 
+<a id="avertissement"></a>
 > ⚠️ **Un audit ne remplace pas un test réel :** installez toujours le module sur une copie de la boutique avant de mettre à jour en production.
 
 Le moteur est regroupé dans `ps9compatible.php` et ses classes dans `src/Ps9Compatible/`. La liste des éléments supprimés du core est isolée dans `data/removed-api.php`, afin de pouvoir être reconstruite sans toucher au code.
 
-<details>
+</details>
+
+<a id="fonctionnalités"></a>
+<details id="fonctionnalités">
 <summary><h3>✨ Fonctionnalités</h3></summary>
 
 * **Analyse par tokenizer PHP** (`token_get_all`) et non par simple recherche de texte : les faux positifs dans les chaînes et les commentaires sont évités.
@@ -88,7 +92,8 @@ Le moteur est regroupé dans `ps9compatible.php` et ses classes dans `src/Ps9Com
 
 </details>
 
-<details>
+<a id="prérequis"></a>
+<details id="prérequis">
 <summary><h3>🧰 Prérequis</h3></summary>
 
 #### PHP
@@ -114,7 +119,9 @@ Le moteur est regroupé dans `ps9compatible.php` et ses classes dans `src/Ps9Com
 
 </details>
 
-<details>
+<a id="résumé-de-linstallation"></a>
+<a id="installation"></a>
+<details id="installation">
 <summary><h3>🚀 Installation</h3></summary>
 
 #### 1. Récupérer le projet
@@ -169,7 +176,8 @@ Ouvrez ensuite `docs/index.html` (ou servez le dossier `docs`).
 
 </details>
 
-<details>
+<a id="configuration"></a>
+<details id="configuration">
 <summary><h3>⚙️ Configuration</h3></summary>
 
 Il n'existe ni fichier `.env`, ni compte administrateur, ni base de données à configurer. Tout passe par les options de la ligne de commande, ou par l'interface web pour la version navigateur.
@@ -208,7 +216,8 @@ La variable d'environnement `NO_COLOR` est respectée : si elle est définie, la
 
 </details>
 
-<details>
+<a id="exclusions-faux-positifs"></a>
+<details id="exclusions-faux-positifs">
 <summary><h3>🚫 Exclusions (faux positifs)</h3></summary>
 
 Le scanner applique des exclusions pour éviter le bruit et concentrer le rapport sur ce qui compte :
@@ -224,7 +233,8 @@ Le scanner applique des exclusions pour éviter le bruit et concentrer le rappor
 
 </details>
 
-<details>
+<a id="données-stockées"></a>
+<details id="données-stockées">
 <summary><h3>💾 Données stockées</h3></summary>
 
 Le scanner **ne stocke aucune donnée de façon persistante**, à une exception près : le cache d'analyse.
@@ -241,7 +251,8 @@ En mode web, le cache est **désactivé** : chaque analyse repart d'un état pro
 
 </details>
 
-<details>
+<a id="fichiers-et-répertoires-importants"></a>
+<details id="fichiers-et-répertoires-importants">
 <summary><h3>🗂️ Fichiers et répertoires importants</h3></summary>
 
 ```text
@@ -290,7 +301,8 @@ P56-prestashop-9-compatibilite-modules-themes/
 
 </details>
 
-<details>
+<a id="ce-qui-est-vérifié"></a>
+<details id="ce-qui-est-vérifié">
 <summary><h3>🔎 Ce qui est vérifié</h3></summary>
 
 | Gravité | Contrôle |
@@ -309,7 +321,8 @@ P56-prestashop-9-compatibilite-modules-themes/
 
 </details>
 
-<details>
+<a id="sécurité"></a>
+<details id="sécurité">
 <summary><h3>🔐 Sécurité</h3></summary>
 
 #### Mesures présentes dans le code
@@ -330,7 +343,8 @@ P56-prestashop-9-compatibilite-modules-themes/
 
 </details>
 
-<details>
+<a id="variables-denvironnement-et-configuration"></a>
+<details id="variables-denvironnement-et-configuration">
 <summary><h3>🔧 Variables d'environnement et configuration</h3></summary>
 
 Le scanner lit une seule variable d'environnement, et uniquement pour le confort d'affichage :
@@ -345,7 +359,8 @@ Ne copiez jamais un rapport de scan contenant des chemins internes ou des extrai
 
 </details>
 
-<details>
+<a id="api-et-services-externes"></a>
+<details id="api-et-services-externes">
 <summary><h3>🔌 API et services externes</h3></summary>
 
 **Aucun.** Le projet n'appelle aucune API, aucun service tiers, aucune clé, aucun jeton, aucune télémétrie.
@@ -356,7 +371,8 @@ Ne copiez jamais un rapport de scan contenant des chemins internes ou des extrai
 
 </details>
 
-<details>
+<a id="identifiants-et-comptes"></a>
+<details id="identifiants-et-comptes">
 <summary><h3>👥 Identifiants et comptes</h3></summary>
 
 * Il n'existe **aucun système d'authentification** : pas de table d'utilisateurs, pas de login, pas de rôle, pas de jeton.
@@ -366,7 +382,8 @@ Ne copiez jamais un rapport de scan contenant des chemins internes ou des extrai
 
 </details>
 
-<details>
+<a id="mise-à-jour"></a>
+<details id="mise-à-jour">
 <summary><h3>⬆️ Mise à jour</h3></summary>
 
 1. Sauvegardez vos personnalisations éventuelles (règles complémentaires, motifs d'exclusion, dossier de cache si vous voulez le conserver).
@@ -392,7 +409,8 @@ Le script compare l'API publique des trois versions et enregistre ce qui a dispa
 
 </details>
 
-<details>
+<a id="utilisation--interface-web"></a>
+<details id="utilisation--interface-web">
 <summary><h3>🖥️ Utilisation — Interface web</h3></summary>
 
 Servez le dossier `docs` avec un petit serveur local, puis ouvrez la page dans un navigateur supportant WebAssembly :
@@ -425,7 +443,9 @@ Le rapport se met à jour automatiquement si vous changez le format de sortie ap
 
 </details>
 
-<details>
+<a id="publication-sur-github-pages"></a>
+<a id="-publication-sur-github-pages"></a>
+<details id="publication-sur-github-pages">
 <summary><h3>🌐 Publication sur GitHub Pages</h3></summary>
 
 L'interface web est un ensemble de fichiers statiques : elle peut être publiée gratuitement sur GitHub Pages.
@@ -468,7 +488,8 @@ https://<votre-compte>.github.io/P56-prestashop-9-compatibilite-modules-themes/
 
 </details>
 
-<details>
+<a id="utilisation--ligne-de-commande-cli"></a>
+<details id="utilisation--ligne-de-commande-cli">
 <summary><h3>💻 Utilisation — Ligne de commande (CLI)</h3></summary>
 
 ```bash
@@ -513,7 +534,8 @@ php ps9compatible.php ~/modules/mon-module --ignore=tests/*,docs/* --rules=mes-r
 
 </details>
 
-<details>
+<a id="moteur-de-détection"></a>
+<details id="moteur-de-détection">
 <summary><h3>🔎 Moteur de détection</h3></summary>
 
 #### Analyse par tokenizer
@@ -548,7 +570,8 @@ Les listes d'éléments supprimés sont **générées depuis les sources PrestaS
 
 </details>
 
-<details>
+<a id="base-de-connaissances"></a>
+<details id="base-de-connaissances">
 <summary><h3>🗄️ Base de connaissances</h3></summary>
 
 `data/removed-api.php` est le fichier qui contient la liste de ce qui a disparu du core PrestaShop, avec la version de disparition.
@@ -563,7 +586,8 @@ La base est isolée dans son propre fichier afin de pouvoir être **régénéré
 
 </details>
 
-<details>
+<a id="cache"></a>
+<details id="cache">
 <summary><h3>🗃️ Cache</h3></summary>
 
 Réanalyser un module inchangé coûte exactement le même temps que la première fois, alors que rien n'a bougé. Le cache conserve, pour chaque fichier déjà traité, son empreinte SHA-256 et le résultat de l'analyse.
@@ -586,7 +610,8 @@ En mode web, le cache est désactivé : chaque analyse repart d'un état propre.
 
 </details>
 
-<details>
+<a id="formats-de-sortie"></a>
+<details id="formats-de-sortie">
 <summary><h3>📤 Formats de sortie</h3></summary>
 
 | Format | Option | Usage |
@@ -600,7 +625,8 @@ L'option `--no-color` désactive les codes couleur en sortie texte. La variable 
 
 </details>
 
-<details>
+<a id="architecture"></a>
+<details id="architecture">
 <summary><h3>🏗️ Architecture</h3></summary>
 
 ```text
@@ -625,7 +651,8 @@ Le scanner est **sans état** : il lit les fichiers du module, construit ses con
 
 </details>
 
-<details>
+<a id="intégration-en-ci"></a>
+<details id="intégration-en-ci">
 <summary><h3>🤖 Intégration en CI</h3></summary>
 
 Les codes de sortie rendent le scanner directement utilisable dans un pipeline.
@@ -645,7 +672,8 @@ Avec `--format=sarif`, le rapport peut être consommé par l'onglet « Security 
 
 </details>
 
-<details>
+<a id="limites"></a>
+<details id="limites">
 <summary><h3>⚠️ Limites</h3></summary>
 
 1. **Analyse statique uniquement.** Le scanner lit le code, il ne l'exécute pas. Il ne détecte donc pas les problèmes qui n'apparaissent qu'à l'exécution.
@@ -659,7 +687,8 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 
 </details>
 
-<details>
+<a id="dépannage"></a>
+<details id="dépannage">
 <summary><h3>🧰 Dépannage</h3></summary>
 
 | Symptôme | Vérification | Solution |
@@ -677,7 +706,8 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 
 </details>
 
-<details>
+<a id="feuille-de-route"></a>
+<details id="feuille-de-route">
 <summary><h3>🗺️ Feuille de route</h3></summary>
 
 - [x] Analyse par tokenizer PHP (`token_get_all`), sans recherche de texte
@@ -706,7 +736,8 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 
 </details>
 
-<details>
+<a id="journal-des-modifications-changelog"></a>
+<details id="journal-des-modifications-changelog">
 <summary><h3>📦 Journal des modifications (Changelog)</h3></summary>
 
 #### Version 2.0.2 (18/10/2026)
@@ -754,6 +785,7 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 
 ---
 
+<a id="utilisé-dans-ce-projet"></a>
 ## Utilisé dans ce projet
 
 | Langages & Outils | Applications |
@@ -763,6 +795,7 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 | HTML5 / CSS3 (thème sombre) | Vite |
 | JavaScript (ES modules) | PrestaShop 1.7 / 8 / 9 |
 
+<a id="merci-à-tous"></a>
 ## Merci à tous
 
 ### 👏 Remerciements et crédits
@@ -780,6 +813,7 @@ _**N'hésitez pas à contribuer, en ouvrant une issue.**_
 * Respectez les bonnes pratiques et la lisibilité du code : le scan doit rester déterministe.
 * Ne committez jamais de module tiers ni de code sous licence incompatible.
 
+<a id="licence"></a>
 ### 📝 Licence
 
 [Licence libre académique 3.0 (AFL-3.0)](https://opensource.org/licenses/afl-3.0.php)
