@@ -1,6 +1,6 @@
 <?php
 /**
- * Scanner de compatibilité PrestaShop 9 pour modules — Version 2.0.1
+ * Scanner de compatibilité PrestaShop 9 pour modules — Version 2.0.2
  *
  * La version affichée dans le rapport provient de la constante PS9COMPATIBLE_VERSION
  * définie plus bas (source unique de vérité) : ne modifiez que celle-ci.
@@ -30,7 +30,7 @@
  * @author    Thierry Laval <https://thierrylaval.dev/>
  * @copyright 2007-2026 Thierry Laval
  * @license   http://opensource.org/licenses/afl-3.0.php Academic Free License (AFL 3.0)
- * @version   2.0.1
+ * @version   2.0.2
  * @package   Ps9Compatible
  *
  * UTILISATION EN LIGNE DE COMMANDE :
@@ -73,7 +73,7 @@ ini_set('display_errors', '0');
 
 // Version du moteur. Elle est affichée dans le rapport et comparée à celle de la
 // base de connaissances : si elles divergent, un avertissement est signalé.
-const PS9COMPATIBLE_VERSION = '2.0.1';
+const PS9COMPATIBLE_VERSION = '2.0.2';
 const PS9COMPATIBLE_DATA_VERSION = '1.0.0';
 
 // Le scan de gros modules peut dépasser la limite par défaut de 30 secondes.

@@ -876,6 +876,42 @@ final class Ps9Scanner
                 return;
             }
         }
+
+        // Appels d'instance $this->methode() hérités d'une classe namespacée du core
+        // (ex. PrestaShopBundle\Controller\Admin\FrameworkBundleAdminController)
+        $isThisCall = $index >= 2 && isset($tokens[$index - 2])
+            && $tokens[$index - 2]['id'] === T_VARIABLE
+            && $tokens[$index - 2]['text'] === '$this';
+
+        if ($isThisCall) {
+            foreach ($table->declaredWithNamespace() as $declared) {
+                $parent = ltrim($declared['parent'], '\\');
+                if ($parent === '' || strpos($parent, '\\') === false) {
+                    continue;
+                }
+                $parentKey = strtolower($parent);
+                if (isset($this->knowledge['index_namespaced_methods'][$parentKey][$method])) {
+                    $info = $this->knowledge['index_namespaced_methods'][$parentKey][$method]['entry'];
+                    $version = is_array($info) && isset($info[2]) ? $info[2] : '9.0';
+                    $short = substr($parent, strrpos($parent, '\\') + 1);
+                    $this->add(
+                        'removed-method',
+                        $file,
+                        $line,
+                        sprintf(
+                            '%s::%s() (appelée via $this) a été supprimée en PrestaShop %s.',
+                            $short,
+                            $tokens[$index]['text'],
+                            $version
+                        ),
+                        Ps9Rules::hintForMethod($short, $method)
+                    );
+
+                    return;
+                }
+            }
+        }
+
         if (!isset($this->knowledge['index_unique_methods'][$method])) {
             return;
         }
@@ -1102,6 +1138,40 @@ final class Ps9Scanner
         $content = preg_replace_callback('/\{\*.*?\*\}/s', function ($match) {
             return preg_replace('/[^\r\n]/', ' ', $match[0]);
         }, $content);
+        // 1. Analyse globale des balises Smarty { ... } (gère les balises sur plusieurs lignes)
+        if (preg_match_all('/\{(include|l)\b([^{}]*)\}/is', $content, $tagMatches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+            foreach ($tagMatches as $tagMatch) {
+                $tagType = strtolower($tagMatch[1][0]);
+                $tagBody = $tagMatch[2][0];
+                $offset = $tagMatch[0][1];
+                $lineNum = substr_count(substr($content, 0, $offset), "\n") + 1;
+
+                if ($tagType === 'include' && preg_match('/file\s*=\s*[\'"]?\$tpl_dir/i', $tagBody)) {
+                    $this->add(
+                        'tpl-theme-path',
+                        $file,
+                        $lineNum,
+                        'L\'inclusion s\'appuie sur $tpl_dir, dont la valeur dépend du thème actif. Sur Hummingbird, le chemin peut ne plus correspondre.',
+                        $this->targetType()
+                            ? 'Inclure le gabarit par un chemin relatif au thème : {include file=\'_partials/...\'} (ou \'parent:...\' pour un thème enfant).'
+                            : 'Inclure le template par un chemin relatif au module : {include file=\'module:monmodule/views/templates/...\'}.'
+                    );
+                }
+
+                if ($tagType === 'l' && $this->targetType()) {
+                    if (preg_match('/s\s*=\s*["\'][^"\']*["\']/i', $tagBody) && !preg_match('/\bd\s*=/i', $tagBody)) {
+                        $this->add(
+                            'tpl-translation-missing-domain',
+                            $file,
+                            $lineNum,
+                            'Traduction Smarty {l} sans domaine d= : déprécié dans les thèmes PrestaShop 9.',
+                            'Ajouter le domaine : {l s=\'...\' d=\'Shop.Theme\'}.'
+                        );
+                    }
+                }
+            }
+        }
+
         $lines = preg_split('/\R/', $content);
         foreach ($lines as $index => $line) {
             $number = $index + 1;
@@ -1123,19 +1193,6 @@ final class Ps9Scanner
                     'Retirer nofilter, ou ajouter le filtre d\'échappement adapté : |escape:\'html\'.'
                 );
             }
-            if (preg_match(Ps9Rules::pattern('smarty_include_theme'), $line)) {
-                $this->add(
-                    'tpl-theme-path',
-                    $file,
-                    $number,
-                    'L\'inclusion s\'appuie sur $tpl_dir, dont la valeur dépend du thème actif. Sur Hummingbird, le chemin peut ne plus correspondre.',
-                    // Le conseil dépend de la cible : un thème inclut ses propres
-                    // gabarits, il n'a pas de chemin « module: ».
-                    $this->targetType()
-                        ? 'Inclure le gabarit par un chemin relatif au thème : {include file=\'_partials/...\'} (ou \'parent:...\' pour un thème enfant).'
-                        : 'Inclure le template par un chemin relatif au module : {include file=\'module:monmodule/views/templates/...\'}.'
-                );
-            }
             foreach (Ps9Rules::smartyRemovedAll() as $construct => $explanation) {
                 if (stripos($line, $construct) !== false) {
                     $this->add(
@@ -1146,19 +1203,6 @@ final class Ps9Scanner
                         'Réécrire la portion de template avec les balises prises en charge par PrestaShop 9.'
                     );
                 }
-            }
-
-            // Spécifique thème : une traduction {l s='...'} sans domaine d= est
-            // dépréciée. On ne le signale que sur un thème, car dans un module la
-            // convention de domaine diffère (le domaine est souvent omis).
-            if ($this->targetType() && preg_match('/\{l\s+s=["\'][^"\']*["\'](?![^}]*\bd=)/i', $line)) {
-                $this->add(
-                    'tpl-translation-missing-domain',
-                    $file,
-                    $number,
-                    'Traduction Smarty {l} sans domaine d= : déprécié dans les thèmes PrestaShop 9.',
-                    'Ajouter le domaine : {l s=\'...\' d=\'Shop.Theme\'}.'
-                );
             }
         }
     }
@@ -1545,10 +1589,10 @@ final class Ps9Scanner
                     $file,
                     0,
                     sprintf(
-                        'Le thème déclare « %s » : PrestaShop 9 s\'appuie sur Bootstrap 5 (thème Hummingbird).',
+                        'Le thème déclare « %s » : PrestaShop 9 introduit Bootstrap 5 (thème Hummingbird), mais Classic (Bootstrap 4) reste supporté.',
                         $framework
                     ),
-                    'Migrer les gabarits et le JS vers l\'API Bootstrap 5 (data-bs-*, classes bs-*).'
+                    'Optionnel : migrer les gabarits vers Bootstrap 5 (data-bs-*, classes bs-*) pour préparer l\'avenir, ou conserver Bootstrap 4 si le thème repose sur Classic.'
                 );
             }
         }

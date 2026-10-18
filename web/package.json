@@ -1,6 +1,6 @@
 {
   "name": "ps9compatible-web",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "type": "module",
   "description": "ps9compatible dans le navigateur via PHP-WASM (GitHub Pages)",

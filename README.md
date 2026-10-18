@@ -16,7 +16,7 @@
 
 **Vérificateur de compatibilité PrestaShop 9 pour modules et thèmes** audit statique du code qui empêche l'installation ou le fonctionnement d'un module sur PrestaShop 9.
 
-_Script `ps9compatible.php` + classes `src/Ps9Compatible/` + base `data/removed-api.php` (+ interface web WASM dans `web/`)_ — Version : **2.0.1** · Licence : **AFL-3.0**
+_Script `ps9compatible.php` + classes `src/Ps9Compatible/` + base `data/removed-api.php` (+ interface web WASM dans `web/`)_ — Version : **2.0.2** · Licence : **AFL-3.0**
 
 _`Début du projet le 17/10/2026`_
 
@@ -41,7 +41,7 @@ _`Début du projet le 17/10/2026`_
 | 13. [Identifiants et comptes](#identifiants-et-comptes) | 27. [Avertissement](#avertissement) |
 | 14. [Mise à jour](#mise-à-jour) | 28. [Résumé de l'installation](#résumé-de-linstallation) |
 | 15. [Utilisation — Interface web](#utilisation--interface-web) | 29. [Merci à tous](#merci-à-tous) |
-| 16. [Publication sur GitHub Pages](#-publication-sur-github-pages) |                               |
+| 16. [Publication sur GitHub Pages](#-publication-sur-github-pages) | 30. [Journal des modifications](#journal-des-modifications-changelog) |
 
 <details>
 <summary><h3>📖 À propos du projet</h3></summary>
@@ -162,9 +162,9 @@ Ouvrez ensuite `docs/index.html` (ou servez le dossier `docs`).
 
 #### 4. Vérifier l'installation
 
-* En CLI : `php ps9compatible.php --version` doit afficher `ps9compatible 2.0.1`.
+* En CLI : `php ps9compatible.php --version` doit afficher `ps9compatible 2.0.2`.
 * En CLI : `php ps9compatible.php --help` affiche l'aide complète.
-* Dans le navigateur : la mention « Moteur prêt. » doit apparaître après le chargement du runtime PHP (quelques secondes).
+* Dans le navigateur : la mention « Prêt pour analyse. » apparaît immédiatement (chargement différé du moteur WASM à la première interaction).
 * En cas d'échec, consultez la section [Dépannage](#dépannage).
 
 </details>
@@ -375,7 +375,7 @@ Ne copiez jamais un rapport de scan contenant des chemins internes ou des extrai
 4. Relancez un scan et comparez les résultats.
 5. Pour l'interface web : `cd web && npm install && npm run build`.
 
-Aucun mécanisme de migration et aucune base de données ne sont présents. La version courante est indiquée dans `PS9COMPATIBLE_VERSION` et dans l'en-tête de `ps9compatible.php` (`2.0.1`).
+Aucun mécanisme de migration et aucune base de données ne sont présents. La version courante est indiquée dans `PS9COMPATIBLE_VERSION` et dans l'en-tête de `ps9compatible.php` (`2.0.2`).
 
 #### Reconstruire la base de connaissances
 
@@ -706,6 +706,50 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 
 </details>
 
+<details>
+<summary><h3>📦 Journal des modifications (Changelog)</h3></summary>
+
+#### Version 2.0.2 (18/10/2026)
+
+* **1. WebAssembly & Performances Web (`web/src/main.js`) :**
+  - **Lazy loading actif** : au chargement de la page, les ~20 Mo de WebAssembly ne sont plus téléchargés. La page s'ouvre instantanément avec le message « Prêt pour analyse. ».
+  - **Déclenchement à la demande** : le runtime WASM se charge dès la première interaction (au survol ou focus de la zone, au glisser-déposer d'un fichier ou au clic sur l'un des boutons).
+* **2. Sélecteur de fichiers (`web/src/main.js`) :**
+  - **Fin de la double boîte de dialogue** : suppression des `showPicker()` / `click()` manuels dans les labels `<label for="...">`. Le navigateur gère le clic nativement et `e.stopPropagation()` évite toute double ouverture ou avertissement en console sous Linux/Safari.
+* **3. Moteur PHP (`src/Ps9Compatible/Scanner.php` & `Rules.php`) :**
+  - **Méthodes héritées `$this->`** : détection des appels `$this->methode()` héritant d'une classe namespacée du core PrestaShop via `index_namespaced_methods`.
+  - **Balises Smarty multilignes** : extraction globale regex multiline pour intercepter les `{include\n file="..."}` ou traductions `{l\n ...}` formatées sur plusieurs lignes.
+  - **Bootstrap 4** : rétrogradé en simple Remarque (`NOTICE`) pour les thèmes enfants de Classic qui restent fonctionnels sous PS9.
+* **Vérifications & Tests :**
+  - **Tests PHP** : `php tests/run-regression.php` → 40 cas testés, 0 échec (tous au vert).
+  - **Build Web** : `npm run build` exécuté, dossier `docs/` régénéré pour GitHub Pages.
+  - **Tests navigateur** : validés dans Chromium avec Playwright (0 erreur).
+
+#### Version 2.0.1 (18/10/2026)
+
+* **Moteur de détection PHP :**
+  - Détection des appels statiques préfixés par `\` (ex. `\Tools::displayPrice()`, `\Tools::jsonEncode()`) et fonctions globales (`\each()`).
+  - Prise en charge des alias d'importation `use ... as ...` et des imports groupés `use Foo\{Bar, Baz as B}`.
+  - Analyse des bornes `$this->ps_versions_compliancy = ['max' => '...']` déclarées en PHP.
+  - Prise en charge des appels `registerHook()` avec tableau et des listes de hooks préparées à l'avance.
+  - Élimination des faux positifs sur les constantes sans préfixe (`LogLevel::WARNING`, `self::ERROR`...) et sur les classes propres au module homonymes du core (`FileUploader`).
+  - Détection et affichage des constats masqués par le seuil minimal `--min-severity`.
+* **Interface web :**
+  - Style et classe `.drop` avec retour visuel actif lors du glisser-déposer.
+  - Correction de la navigation clavier (Entrée sur « Choisir un dossier » n'ouvre plus le sélecteur ZIP).
+  - Conservation du nom réel du module pour les chemins du rapport et les noms de téléchargement.
+  - Mise en cache du montage WASM pour éviter les retéléchargements à chaque scan.
+* **Tests :**
+  - Ajout de la suite de 37 tests de non-régression (`tests/run-regression.php`).
+
+#### Version 2.0.0 (17/10/2026)
+
+* Version initiale :
+  - Audit complet de compatibilité PrestaShop 9 (PHP 8.1+, suppression des classes et méthodes legacy, nouveaux namespaces).
+  - Moteur d'analyse basé sur le tokenizer PHP (`token_get_all`).
+  - Sorties multiples : Texte coloré, JSON, Markdown, SARIF pour intégration CI.
+  - Interface web autonome exécutant PHP-WASM directement dans le navigateur sans serveur distant.
+
 </details>
 
 ---
@@ -724,9 +768,9 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 ### 👏 Remerciements et crédits
 
 * **Auteur des corrections :** [SwissGeek](https://swissgeek.dev/)
-  - Rapport d'analyse et correctifs du moteur de détection (gestion des appels namespacés `\Tools`, alias `use`, imports groupés, bornes de compatibilité `$this->ps_versions_compliancy` en PHP, `registerHook` en tableau, élimination des faux positifs sur constantes et classes du module).
-  - Correctifs de l'interface web (zone de dépôt et retour visuel, navigation clavier, conservation du nom réel du module, réinitialisation du champ fichier, mise en cache du montage WASM).
-  - Conception et intégration de la suite de 37 tests de non-régression (`tests/run-regression.php`).
+  - Rapport d'analyse et correctifs du moteur de détection (gestion des appels namespacés `\Tools`, alias `use`, imports groupés, bornes de compatibilité `$this->ps_versions_compliancy` en PHP, `registerHook` en tableau, élimination des faux positifs sur constantes et classes du module, appels `$this->methode()` hérités, balises Smarty multilignes).
+  - Correctifs de l'interface web (chargement WebAssembly lazy-loading à la demande, élimination de la double boîte de dialogue des sélecteurs de fichier, zone de dépôt et retour visuel, navigation clavier, conservation du nom réel du module, réinitialisation du champ fichier, mise en cache du montage WASM).
+  - Conception et enrichissement de la suite de 40 tests de non-régression (`tests/run-regression.php`).
 
 ### Contribution
 

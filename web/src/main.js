@@ -81,34 +81,52 @@ function showError(message) {
   els.resultsPanel.hidden = true;
 }
 
-/** Charge la cible une seule fois, puis active le bouton d'analyse. */
+let warmUpPromise = null;
+
+/** Charge le moteur WebAssembly et monte le scanner une seule fois. */
 async function warmUp() {
-  try {
-    if (!moduleLoaded) {
-      setStatus('Initialisation du moteur PHP…');
-    }
-    await mountScanner((msg) => {
+  if (warmUpPromise) {
+    return warmUpPromise;
+  }
+  warmUpPromise = (async () => {
+    try {
       if (!moduleLoaded) {
-        setStatus(msg);
+        setStatus('Initialisation du moteur PHP…');
       }
-    });
-    // Ne pas ecraser le message d'une cible deja chargee pendant l'init.
-    if (!moduleLoaded) {
-      setStatus('Moteur prêt.');
+      await mountScanner((msg) => {
+        if (!moduleLoaded) {
+          setStatus(msg);
+        }
+      });
+      // Ne pas écraser le message d'une cible déjà chargée pendant l'init.
+      if (!moduleLoaded) {
+        setStatus('Moteur prêt.');
+      }
+      els.btnScan.disabled = !moduleLoaded;
+    } catch (err) {
+      warmUpPromise = null;
+      setStatus('Le moteur PHP n’a pas pu démarrer.', 'error');
+      showError(
+        `Impossible d'initialiser le moteur PHP (WebAssembly).\n\n${err && err.message ? err.message : err}\n\n` +
+          `Vérifiez que votre navigateur supporte WebAssembly, et rechargez la page.`
+      );
+      throw err;
     }
-    els.btnScan.disabled = !moduleLoaded;
-  } catch (err) {
-    setStatus('Le moteur PHP n’a pas pu démarrer.', 'error');
-    showError(
-      `Impossible d'initialiser le moteur PHP (WebAssembly).\n\n${err && err.message ? err.message : err}\n\n` +
-        `Vérifiez que votre navigateur supporte WebAssembly, et rechargez la page.`
-    );
+  })();
+  return warmUpPromise;
+}
+
+/** Déclenche le chargement différé du moteur dès la première interaction sans bloquer l'UI. */
+function lazyWarmUp() {
+  if (!warmUpPromise) {
+    warmUp().catch(() => {});
   }
 }
 
 /** Prend en charge une liste de fichiers (dossier ou ZIP). */
 async function acceptFiles(files, label) {
   try {
+    lazyWarmUp();
     els.errorPanel.hidden = true;
     setStatus('Lecture des fichiers…');
     currentFiles = files;
@@ -129,6 +147,7 @@ async function handleZipFile(file) {
   if (!file) {
     return;
   }
+  lazyWarmUp();
   try {
     setStatus('Extraction de l’archive…');
     const buffer = await file.arrayBuffer();
@@ -147,6 +166,7 @@ async function handleDirectoryInput(fileList) {
   if (!fileList || fileList.length === 0) {
     return;
   }
+  lazyWarmUp();
   // webkitRelativePath vaut « monmodule/config.xml » : seul le premier segment
   // est le nom du dossier choisi. L'ancien code prenait le chemin complet du
   // premier fichier, d'ou un rapport nomme « ps9compatible-monmodule_config.txt ».
@@ -172,7 +192,7 @@ async function runTheScan() {
   const format = els.optFormat.value;
   try {
     setStatus('Analyse en cours…');
-    await ensurePhp();
+    await warmUp();
     const result = await runScan(currentFiles, {
       name: currentLabel,
       format,
@@ -296,10 +316,17 @@ function wireEvents() {
     els.dropZone.addEventListener(evt, prevent);
   });
 
-  els.dropZone.addEventListener('dragover', () => els.dropZone.classList.add('is-over'));
+  els.dropZone.addEventListener('pointerenter', () => lazyWarmUp(), { once: true });
+  els.dropZone.addEventListener('focusin', () => lazyWarmUp(), { once: true });
+  els.dropZone.addEventListener('dragenter', () => lazyWarmUp());
+  els.dropZone.addEventListener('dragover', () => {
+    lazyWarmUp();
+    els.dropZone.classList.add('is-over');
+  });
   els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('is-over'));
 
   els.dropZone.addEventListener('drop', async (e) => {
+    lazyWarmUp();
     els.dropZone.classList.remove('is-over');
     const dt = e.dataTransfer;
     if (!dt) {
@@ -347,6 +374,7 @@ function wireEvents() {
   });
 
   els.dropZone.addEventListener('click', (e) => {
+    lazyWarmUp();
     if (e.target.closest('label') || e.target.tagName === 'INPUT') {
       return;
     }
@@ -362,6 +390,7 @@ function wireEvents() {
     }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      lazyWarmUp();
       els.fileZip.click();
     }
   });
@@ -378,37 +407,18 @@ function wireEvents() {
     els.fileDir.value = '';
     handleDirectoryInput(list);
   });
-  // Certains navigateurs n'ouvrent pas le selecteur si le label n'a pas de
-  // `for` explicite pointant vers l'input. On force donc l'ouverture en JS,
-  // et on empeche la double ouverture (label natif + appel JS).
+  // Les labels portent for="..." : le navigateur ouvre nativement le sélecteur.
+  // On se contente de stopper la propagation vers la zone de dépôt (qui ouvrirait
+  // le ZIP par défaut), sans réappeler manuellement showPicker() ou click() pour
+  // éliminer tout risque de double boîte de dialogue.
   ['#label-zip', '#label-dir'].forEach((selector) => {
     const label = document.querySelector(selector);
     if (!label) {
       return;
     }
     label.addEventListener('click', (e) => {
-      const input = document.getElementById(label.dataset.input);
-      if (!input) {
-        return;
-      }
-      // Le label porte deja for="..." : le navigateur ouvre lui-meme le
-      // selecteur. On se contente de ne pas laisser le clic remonter jusqu'a
-      // la zone de depot (qui, elle, ouvrirait aussi le selecteur).
+      lazyWarmUp();
       e.stopPropagation();
-      if (e.target === input) {
-        return;
-      }
-      // Filet de securite : si le navigateur n'a pas honore le `for`
-      // (input non rendu), forcer l'ouverture programmatique.
-      if (typeof input.showPicker === 'function') {
-        try {
-          input.showPicker();
-          return;
-        } catch (err) {
-          // showPicker peut lever si deja ouvert : on retombe sur click().
-        }
-      }
-      input.click();
     });
   });
   els.btnScan.addEventListener('click', runTheScan);
@@ -520,4 +530,4 @@ function readEntryTree(entries) {
 }
 
 wireEvents();
-warmUp();
+setStatus('Prêt pour analyse.');

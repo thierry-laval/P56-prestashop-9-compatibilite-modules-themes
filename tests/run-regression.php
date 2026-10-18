@@ -115,6 +115,10 @@ $cases = [
     ['Thème : meta.compatibility.to < 9', 'mytheme', 'theme-compliancy', 'config/theme.yml:9', true, '8.2.9'],
     ['Thème : hook supprimé dans modules_to_hook', 'mytheme', 'theme-hook', 'config/theme.yml:13', true, 'displayCustomerAccountTop'],
     ['Thème : conseil $tpl_dir adapté au thème', 'mytheme', 'tpl-theme-path', 'templates/catalog/product.tpl:1', true, '_partials'],
+    ['Smarty : inclusion multilignes {include\n file=...} détectée', 'mytheme', 'tpl-theme-path', 'templates/catalog/product.tpl:2', true, '_partials'],
+
+    // 8. Méthodes héritées de classes namespacées du core
+    ['$this->methode() héritée d\'une classe namespacée du core détectée', 'nsmod', 'removed-method', 'src/MyController.php:10', true, 'renderFieldAction'],
 ];
 
 $failed = 0;
@@ -143,5 +147,10 @@ $ok = strpos($output, 'Aucun problème détecté') === false && strpos($output, 
 $failed += $ok ? 0 : 1;
 printf("%s  %s\n", $ok ? 'OK   ' : 'ECHEC', 'Seuil « error » : alertes masquées signalées, pas de « Aucun problème détecté »');
 
-printf("\n%d cas, %d échec(s)\n", count($cases) + 2, $failed);
+// 5. Thème : framework bootstrap-4 rétrogradé en simple Remarque (notice)
+$ok = Ps9Rules::severity('theme-bootstrap4') === Ps9Rules::NOTICE;
+$failed += $ok ? 0 : 1;
+printf("%s  %s\n", $ok ? 'OK   ' : 'ECHEC', 'Règle theme-bootstrap4 : rétrogradée au niveau NOTICE (Remarque)');
+
+printf("\n%d cas, %d échec(s)\n", count($cases) + 3, $failed);
 exit($failed === 0 ? 0 : 1);
