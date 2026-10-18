@@ -16,7 +16,7 @@
 
 **Vérificateur de compatibilité PrestaShop 9 pour modules et thèmes** audit statique du code qui empêche l'installation ou le fonctionnement d'un module sur PrestaShop 9.
 
-_Script `ps9compatible.php` + classes `src/Ps9Compatible/` + base `data/removed-api.php` (+ interface web WASM dans `web/`)_ — Version : **2.0.0** · Licence : **AFL-3.0**
+_Script `ps9compatible.php` + classes `src/Ps9Compatible/` + base `data/removed-api.php` (+ interface web WASM dans `web/`)_ — Version : **2.0.1** · Licence : **AFL-3.0**
 
 _`Début du projet le 17/10/2026`_
 
@@ -162,7 +162,7 @@ Ouvrez ensuite `docs/index.html` (ou servez le dossier `docs`).
 
 #### 4. Vérifier l'installation
 
-* En CLI : `php ps9compatible.php --version` doit afficher `ps9compatible 2.0.0`.
+* En CLI : `php ps9compatible.php --version` doit afficher `ps9compatible 2.0.1`.
 * En CLI : `php ps9compatible.php --help` affiche l'aide complète.
 * Dans le navigateur : la mention « Moteur prêt. » doit apparaître après le chargement du runtime PHP (quelques secondes).
 * En cas d'échec, consultez la section [Dépannage](#dépannage).
@@ -375,7 +375,7 @@ Ne copiez jamais un rapport de scan contenant des chemins internes ou des extrai
 4. Relancez un scan et comparez les résultats.
 5. Pour l'interface web : `cd web && npm install && npm run build`.
 
-Aucun mécanisme de migration et aucune base de données ne sont présents. La version courante est indiquée dans `PS9COMPATIBLE_VERSION` et dans l'en-tête de `ps9compatible.php` (`2.0.0`).
+Aucun mécanisme de migration et aucune base de données ne sont présents. La version courante est indiquée dans `PS9COMPATIBLE_VERSION` et dans l'en-tête de `ps9compatible.php` (`2.0.1`).
 
 #### Reconstruire la base de connaissances
 
@@ -720,6 +720,13 @@ Utilisez-le comme première passe, puis installez le module sur une copie Presta
 | JavaScript (ES modules) | PrestaShop 1.7 / 8 / 9 |
 
 ## Merci à tous
+
+### 👏 Remerciements et crédits
+
+* **Auteur des corrections :** [SwissGeek](https://swissgeek.dev/)
+  - Rapport d'analyse et correctifs du moteur de détection (gestion des appels namespacés `\Tools`, alias `use`, imports groupés, bornes de compatibilité `$this->ps_versions_compliancy` en PHP, `registerHook` en tableau, élimination des faux positifs sur constantes et classes du module).
+  - Correctifs de l'interface web (zone de dépôt et retour visuel, navigation clavier, conservation du nom réel du module, réinitialisation du champ fichier, mise en cache du montage WASM).
+  - Conception et intégration de la suite de 37 tests de non-régression (`tests/run-regression.php`).
 
 ### Contribution
 

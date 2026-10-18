@@ -1,6 +1,6 @@
 {
   "name": "ps9compatible-web",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "description": "ps9compatible dans le navigateur via PHP-WASM (GitHub Pages)",
@@ -10,7 +10,7 @@
     "build": "npm run sync-assets && vite build",
     "preview": "vite preview"
   },
-  "license": "MIT",
+  "license": "AFL-3.0",
   "dependencies": {
     "@php-wasm/universal": "^3.1.58",
     "@php-wasm/web-8-4": "^3.1.54"

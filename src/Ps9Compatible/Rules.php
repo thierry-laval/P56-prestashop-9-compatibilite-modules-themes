@@ -78,6 +78,8 @@ final class Ps9Rules
         'theme-js-bootstrap4' => self::WARNING,
         'tpl-translation-missing-domain' => self::NOTICE,
         'theme-bundled-module' => self::NOTICE,
+        'theme-compliancy' => self::WARNING,
+        'theme-hook' => self::WARNING,
     ];
 
     /**

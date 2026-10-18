@@ -13,7 +13,10 @@ import { PHP, loadPHPRuntime } from '@php-wasm/universal';
 import { getPHPLoaderModule } from '@php-wasm/web-8-4';
 
 const APP_ROOT = '/app';
-const MODULE_ROOT = '/module';
+// La cible est montee dans /scan/<nom-reel> : le nom du dossier sert de libelle
+// dans le rapport (chemins « monmodule/monmodule.php » et non « module/... »),
+// et a la detection module/theme (fichier PHP portant le nom du dossier).
+const SCAN_ROOT = '/scan';
 
 /** Duree maximale d'une analyse, en millisecondes. */
 const SCAN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -23,6 +26,8 @@ const ASSETS_BASE = new URL('../php/', import.meta.url);
 
 let phpInstance = null;
 let runtimePromise = null;
+/** Promesse du montage du scanner : le manifeste et les sources PHP ne sont telecharges qu'une fois. */
+let scannerPromise = null;
 
 /**
  * Demarre PHP-WASM une seule fois et met en place le dossier de travail.
@@ -75,7 +80,19 @@ function mkdirp(php, dir) {
  * Copie l'arborescence du scanner dans /app depuis les fichiers servis en statique.
  * @param {(msg: string) => void} [onProgress]
  */
-export async function mountScanner(onProgress = () => {}) {
+export function mountScanner(onProgress = () => {}) {
+  // Chaque analyse (et chaque changement d'option) rappelait ce montage, qui
+  // retelechargeait le manifeste et les sources PHP, dont la base de 350 Ko.
+  if (!scannerPromise) {
+    scannerPromise = doMountScanner(onProgress).catch((err) => {
+      scannerPromise = null; // nouvel essai possible apres un echec reseau
+      throw err;
+    });
+  }
+  return scannerPromise;
+}
+
+async function doMountScanner(onProgress) {
   const php = await ensurePhp(onProgress);
   onProgress('Préparation du scanner…');
 
@@ -110,33 +127,50 @@ export async function mountScanner(onProgress = () => {}) {
 }
 
 /**
- * Vide puis remonte la cible utilisateur (module ou theme) dans /module.
+ * Nettoie le nom de la cible pour en faire un nom de dossier sur.
+ * @param {string} name
+ * @returns {string}
+ */
+export function safeTargetName(name) {
+  const clean = String(name || '')
+    .replace(/\.zip$/i, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^[._]+|[._]+$/g, '');
+  return clean || 'cible';
+}
+
+/**
+ * Vide puis remonte la cible utilisateur (module ou theme) dans /scan/<nom>.
  * @param {PHP} php
  * @param {Array<{path: string, data: Uint8Array}>} files
+ * @param {string} name
+ * @returns {string} Chemin du dossier monte.
  */
-function mountModule(php, files) {
+function mountModule(php, files, name) {
   try {
-    if (php.fileExists(MODULE_ROOT)) {
-      php.rmdir(MODULE_ROOT, { recursive: true });
+    if (php.fileExists(SCAN_ROOT)) {
+      php.rmdir(SCAN_ROOT, { recursive: true });
     }
   } catch (err) {
     // Pas grave si absent.
   }
-  mkdirp(php, MODULE_ROOT);
+  const root = `${SCAN_ROOT}/${safeTargetName(name)}`;
+  mkdirp(php, root);
 
   for (const file of files) {
     const clean = sanitizePath(file.path);
     if (!clean) {
       continue;
     }
-    const target = `${MODULE_ROOT}/${clean}`;
+    const target = `${root}/${clean}`;
     const parent = target.slice(0, target.lastIndexOf('/'));
     mkdirp(php, parent);
     php.writeFile(target, file.data);
   }
+  return root;
 }
 
-/** Empeche toute sortie du dossier /module (zip slip). */
+/** Empeche toute sortie du dossier de la cible (zip slip). */
 function sanitizePath(p) {
   const normalized = p.replace(/\\/g, '/').replace(/^\/+/, '');
   const parts = normalized.split('/').filter((s) => s && s !== '.');
@@ -265,6 +299,21 @@ async function inflateRaw(raw) {
 }
 
 /**
+ * Nom du dossier racine unique d'une selection (ZIP ou dossier), ou chaine vide.
+ * @param {Array<{path: string, data: Uint8Array}>} files
+ * @returns {string}
+ */
+export function singleRootName(files) {
+  const tops = new Set(files.map((f) => f.path.split('/')[0]));
+  if (tops.size !== 1) {
+    return '';
+  }
+  const [top] = [...tops];
+  // Un fichier seul a la racine n'est pas un dossier.
+  return files.some((f) => f.path.startsWith(top + '/')) ? top : '';
+}
+
+/**
  * Applique le prefixe "dossier racine" attendu par le scanner.
  * Un ZIP de module ou de theme contient normalement un unique dossier portant son nom.
  * @param {Array<{path: string, data: Uint8Array}>} files
@@ -308,15 +357,15 @@ export { ARCHIVE_EXT };
 /**
  * Execute le scan d'une cible (module ou theme) deja montee.
  * @param {Array<{path: string, data: Uint8Array}>} files
- * @param {{format?: string, includeVendor?: boolean, minSeverity?: string, type?: string, noCache?: boolean}} [options]
+ * @param {{name?: string, format?: string, includeVendor?: boolean, minSeverity?: string, type?: string, noCache?: boolean}} [options]
  * @returns {Promise<{exitCode: number, stdout: string, stderr: string, durationMs: number}>}
  */
 export async function runScan(files, options = {}) {
   const php = await mountScanner();
-  mountModule(php, files);
+  const root = mountModule(php, files, options.name);
 
   const format = options.format || 'text';
-  const args = ['ps9compatible.php', MODULE_ROOT, `--format=${format}`, '--no-color'];
+  const args = ['ps9compatible.php', root, `--format=${format}`, '--no-color'];
   if (options.type && options.type !== 'auto') {
     args.push(`--type=${options.type}`);
   }

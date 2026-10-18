@@ -297,6 +297,13 @@ body {
   outline-offset: 2px;
 }
 
+/* Les champs fichier sont visuellement masqués : quand l'un d'eux reçoit le
+   focus au clavier, on dessine l'anneau de focus sur le bouton qui le précède. */
+.btn:has(+ .visually-hidden:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -453,6 +460,14 @@ select:focus-visible {
   color: var(--notice);
   background: var(--notice-bg);
   border-color: rgba(90, 209, 200, 0.3);
+}
+
+/* Constats masqués par le seuil de gravité : neutre, mais visible. */
+.badge-hidden {
+  color: var(--text-faint);
+  background: transparent;
+  border-color: var(--border-soft);
+  border-style: dashed;
 }
 
 .output,

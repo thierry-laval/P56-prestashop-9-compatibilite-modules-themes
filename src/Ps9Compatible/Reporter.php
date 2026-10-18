@@ -121,9 +121,13 @@ final class Ps9Reporter
         if ($report['scan']['files_cached'] > 0) {
             $out .= sprintf("%d fichier(s) restitué(s) depuis le cache\n", $report['scan']['files_cached']);
         }
+        $hiddenLine = self::hiddenLine($report);
+        if ($hiddenLine !== '') {
+            $out .= $hiddenLine . "\n";
+        }
         $out .= "\n";
         if (empty($report['findings'])) {
-            $out .= "Aucun problème détecté.\n";
+            $out .= self::emptyMessage($report) . "\n";
 
             return $out;
         }
@@ -199,8 +203,12 @@ final class Ps9Reporter
             $report['summary']['warning'],
             $report['summary']['notice']
         );
+        $hiddenLine = self::hiddenLine($report);
+        if ($hiddenLine !== '') {
+            $out .= '> ' . $hiddenLine . "\n\n";
+        }
         if (empty($report['findings'])) {
-            $out .= "Aucun problème détecté.\n";
+            $out .= self::emptyMessage($report) . "\n";
 
             return $out;
         }
@@ -295,6 +303,62 @@ final class Ps9Reporter
         ];
 
         return isset($levels[$severity]) ? $levels[$severity] : 'warning';
+    }
+
+    /**
+     * Nombre total de constats masqués par --min-severity.
+     *
+     * @param  array $report Rapport structuré.
+     * @return int
+     */
+    public static function hiddenTotal(array $report)
+    {
+        if (empty($report['scan']['hidden']) || !is_array($report['scan']['hidden'])) {
+            return 0;
+        }
+
+        return (int) array_sum($report['scan']['hidden']);
+    }
+
+    /**
+     * Ligne d'information sur les constats masqués, ou chaîne vide.
+     *
+     * Format stable (relu par l'interface web) :
+     * « N constat(s) masqué(s) par le seuil error : X alerte(s) · Y remarque(s) ».
+     *
+     * @param  array $report Rapport structuré.
+     * @return string
+     */
+    public static function hiddenLine(array $report)
+    {
+        $total = self::hiddenTotal($report);
+        if ($total === 0) {
+            return '';
+        }
+        $hidden = $report['scan']['hidden'];
+
+        return sprintf(
+            '%d constat(s) masqué(s) par le seuil %s : %d alerte(s) · %d remarque(s)',
+            $total,
+            isset($report['scan']['min_severity']) ? $report['scan']['min_severity'] : '',
+            isset($hidden['warning']) ? $hidden['warning'] : 0,
+            isset($hidden['notice']) ? $hidden['notice'] : 0
+        );
+    }
+
+    /**
+     * Message affiché quand aucun constat n'est listé.
+     *
+     * @param  array $report Rapport structuré.
+     * @return string
+     */
+    private static function emptyMessage(array $report)
+    {
+        if (self::hiddenTotal($report) > 0) {
+            return 'Aucun constat à ce seuil de gravité. Abaissez la gravité minimale pour voir les constats masqués.';
+        }
+
+        return 'Aucun problème détecté.';
     }
 
     /**

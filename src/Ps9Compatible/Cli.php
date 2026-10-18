@@ -128,11 +128,22 @@ final class Ps9Cli
         $duration = (int) round((microtime(true) - $started) * 1000);
 
         // Filtrage éventuel sur la gravité minimale.
+        // Les constats masqués sont comptés : un rapport filtré ne doit jamais
+        // conclure « Aucun problème détecté » quand des alertes existent (par
+        // exemple des hooks supprimés, classés en alerte et masqués au seuil
+        // « error »).
         $threshold = $options['min_severity'];
+        $hidden = ['error' => 0, 'warning' => 0, 'notice' => 0];
         if ($threshold !== 'notice') {
-            $findings = array_values(array_filter($findings, function (array $finding) use ($threshold) {
-                return Ps9Rules::isAtLeast($finding['severity'], $threshold);
-            }));
+            $kept = [];
+            foreach ($findings as $finding) {
+                if (Ps9Rules::isAtLeast($finding['severity'], $threshold)) {
+                    $kept[] = $finding;
+                } elseif (isset($hidden[$finding['severity']])) {
+                    ++$hidden[$finding['severity']];
+                }
+            }
+            $findings = $kept;
         }
 
         $context = [
@@ -141,6 +152,8 @@ final class Ps9Cli
             'include_vendor' => $options['include_vendor'],
             'rules_loaded' => Ps9Rules::loadedOverrides(),
             'cache_enabled' => $cache !== null,
+            'min_severity' => $threshold,
+            'hidden' => $hidden,
         ];
         $report = Ps9Reporter::build($findings, $scanner->moduleInfo(), $scanner->scannedCount(), $scanner->cachedCount(), $context);
         $output = Ps9Reporter::render($report, $options['format'], !$options['no_color'] && self::supportsColor());

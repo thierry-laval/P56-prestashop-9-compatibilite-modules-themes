@@ -1,0 +1,14 @@
+name: mytheme
+display_name: My theme
+version: 1.0.0
+author:
+  name: "X"
+meta:
+  compatibility:
+    from: 1.7.0.0
+    to: 8.2.9
+global_settings:
+  hooks:
+    modules_to_hook:
+      displayCustomerAccountTop:
+        - ps_customeraccountlinks

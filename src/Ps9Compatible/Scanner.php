@@ -72,6 +72,13 @@ final class Ps9Scanner
     private $log = [];
 
     /**
+     * @var array Classes déclarées par le module lui-même (nom complet en
+     *            minuscules => true), hors surcharges. Une classe du module qui
+     *            porte le nom d'une classe retirée du core n'est pas un constat.
+     */
+    private $ownClasses = [];
+
+    /**
      * @param array       $knowledge     Base de connaissances PrestaShop.
      * @param string      $root          Racine absolue du module.
      * @param bool        $includeVendor Analyser aussi vendor/.
@@ -168,7 +175,19 @@ final class Ps9Scanner
      */
     public function run()
     {
-        foreach ($this->collectFiles() as $relativePath => $absolutePath) {
+        $files = $this->collectFiles();
+
+        // Premier passage : inventaire des classes écrites par le module. Les
+        // constats d'un fichier en dépendent ; le cache est donc lié à cet
+        // inventaire (une classe ajoutée ailleurs invalide les entrées).
+        $this->collectOwnClasses($files);
+        if ($this->cache) {
+            $owned = array_keys($this->ownClasses);
+            sort($owned);
+            $this->cache->setContext(hash('sha256', PS9COMPATIBLE_VERSION . "\n" . implode("\n", $owned)));
+        }
+
+        foreach ($files as $relativePath => $absolutePath) {
             $content = @file_get_contents($absolutePath);
             if ($content === false) {
                 continue;
@@ -335,6 +354,83 @@ final class Ps9Scanner
         return false;
     }
 
+    /**
+     * Inventorie les classes déclarées par le module (namespace compris).
+     *
+     * Les surcharges (override/) et les classes « Xxx extends XxxCore » sont
+     * exclues : elles redéfinissent une classe du core et ne doivent pas
+     * masquer les constats sur cette classe.
+     *
+     * @param array $files Chemin relatif => chemin absolu.
+     */
+    private function collectOwnClasses(array $files)
+    {
+        $this->ownClasses = [];
+        foreach ($files as $relativePath => $absolutePath) {
+            if (strtolower(pathinfo($relativePath, PATHINFO_EXTENSION)) !== 'php') {
+                continue;
+            }
+            if (preg_match('#(^|/)override/#', $relativePath)) {
+                continue;
+            }
+            $content = @file_get_contents($absolutePath);
+            if ($content === false || stripos($content, 'class') === false
+                && stripos($content, 'interface') === false
+                && stripos($content, 'trait') === false
+                && stripos($content, 'enum') === false
+            ) {
+                continue;
+            }
+            $tokens = $this->tokenize($content);
+            if ($tokens === null) {
+                continue;
+            }
+            $table = new Ps9SymbolTable($tokens, $relativePath);
+            foreach ($table->declaredWithNamespace() as $declared) {
+                $parent = strtolower($declared['parent']);
+                if ($parent !== '' && substr($parent, -4) === 'core') {
+                    continue;
+                }
+                $this->ownClasses[strtolower(ltrim($declared['fqcn'], '\\'))] = true;
+            }
+        }
+    }
+
+    /**
+     * Indique si un nom de classe complet désigne une classe écrite par le module.
+     *
+     * @param  string $fqcn Nom complet résolu.
+     * @return bool
+     */
+    private function isOwnClass($fqcn)
+    {
+        return isset($this->ownClasses[strtolower(ltrim((string) $fqcn, '\\'))]);
+    }
+
+    /**
+     * Compare une borne max déclarée à la version cible de PrestaShop.
+     *
+     * Les bornes courtes sont complétées comme le fait PrestaShop à la
+     * construction du module (« 9.0 » couvre toute la branche 9.0.x) : sans cela,
+     * version_compare('9.0.0', '9.0') déclarerait à tort le module incompatible.
+     *
+     * @param  string $max Borne max déclarée.
+     * @return bool Vrai si la borne exclut la version cible.
+     */
+    private function maxExcludesTarget($max)
+    {
+        $version = preg_replace('/[^0-9.]/', '', (string) $max);
+        if ($version === '') {
+            return false;
+        }
+        $parts = explode('.', trim($version, '.'));
+        while (count($parts) < 4) {
+            $parts[] = '999';
+        }
+
+        return version_compare(Ps9Rules::pattern('ps_version_target'), implode('.', $parts), '>');
+    }
+
     /* ------------------------------------------------------------------ */
     /* Analyse PHP                                                        */
     /* ------------------------------------------------------------------ */
@@ -393,6 +489,25 @@ final class Ps9Scanner
 
         // 5. Directives INI supprimées, dans les appels ini_set() du module.
         $this->scanIniCalls($relativePath, $content);
+
+        // 6. Borne $this->ps_versions_compliancy['max'] : c'est elle que
+        //    PrestaShop vérifie à l'installation. Le constat est émis ici, avec
+        //    le fichier et la ligne, pour rester valable quand le fichier est
+        //    restitué depuis le cache.
+        $compliancy = $table->compliancy();
+        if ($compliancy !== null && $compliancy['max'] !== null && $this->maxExcludesTarget($compliancy['max'])) {
+            $this->add(
+                'compliancy',
+                $relativePath,
+                $compliancy['line'],
+                sprintf(
+                    'ps_versions_compliancy déclare max = %s : PrestaShop %s refusera d\'installer le module.',
+                    $compliancy['max'],
+                    Ps9Rules::pattern('ps_version_target')
+                ),
+                'Relever la borne max (par exemple \'9.99.99\') après avoir corrigé les incompatibilités détectées.'
+            );
+        }
     }
 
     /**
@@ -441,6 +556,11 @@ final class Ps9Scanner
     {
         $name = ltrim($name, '\\');
         if ($name === '') {
+            return;
+        }
+        // Classe écrite par le module lui-même (même homonyme d'une classe
+        // retirée du core, comme FileUploader) : ce n'est pas une dépendance.
+        if ($this->isOwnClass($name)) {
             return;
         }
         $candidates = [$name];
@@ -540,30 +660,49 @@ final class Ps9Scanner
     private function scanPhpCalls(array $tokens, Ps9SymbolTable $table, $file)
     {
         $count = count($tokens);
+        $nameTokens = [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NAME_RELATIVE];
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[$i];
-            if ($token['id'] !== T_STRING) {
+            if (!in_array($token['id'], $nameTokens, true)) {
                 continue;
             }
             $next = isset($tokens[$i + 1]) ? $tokens[$i + 1] : null;
             $prev = isset($tokens[$i - 1]) ? $tokens[$i - 1] : null;
             $text = $token['text'];
-            $lower = strtolower($text);
 
             // Membre statique : Class::membre. Deux cas a distinguer, car une
             // methode est suivie de « ( » alors qu'une constante ne l'est pas :
             //   Cart::getProducts()      -> methode
             //   Cart::ONLY_PRODUCTS      -> constante
+            // Depuis PHP 8, « \Tools » et « Foo\Bar » sont des tokens uniques
+            // (T_NAME_FULLY_QUALIFIED, T_NAME_QUALIFIED) et non des T_STRING :
+            // les accepter ici est indispensable, sinon tout appel préfixé par
+            // une barre oblique (\Tools::displayPrice()) échappait au contrôle.
             if ($next !== null && $next['id'] === T_DOUBLE_COLON && isset($tokens[$i + 2]) && $tokens[$i + 2]['id'] === T_STRING) {
                 $member = $tokens[$i + 2]['text'];
                 $afterMember = isset($tokens[$i + 3]) ? $tokens[$i + 3] : null;
                 $isCall = $afterMember !== null && $afterMember['text'] === '(';
+                $written = $this->writtenName($tokens, $i);
 
                 if ($isCall) {
-                    $this->checkStaticCall($text, $member, $file, $tokens[$i + 2]['line'], $tokens, $i);
+                    $this->checkStaticCall($written, $member, $file, $tokens[$i + 2]['line'], $table);
                 } else {
-                    $this->checkStaticConstant($text, $member, $file, $tokens[$i + 2]['line']);
+                    $this->checkStaticConstant($written, $member, $file, $tokens[$i + 2]['line'], $table);
                 }
+                continue;
+            }
+
+            // Appel de fonction globale écrit avec la barre oblique : \each($a).
+            if ($token['id'] === T_NAME_FULLY_QUALIFIED) {
+                $function = ltrim($text, '\\');
+                if ($next !== null && $next['text'] === '(' && strpos($function, '\\') === false
+                    && ($prev === null || !in_array($prev['id'], [T_NEW, T_FUNCTION, T_CONST], true))
+                ) {
+                    $this->checkFunctionCall($function, $file, $token['line']);
+                }
+                continue;
+            }
+            if ($token['id'] !== T_STRING) {
                 continue;
             }
 
@@ -576,67 +715,127 @@ final class Ps9Scanner
             // Appels de fonction globale : fonction(.
             if ($next !== null && $next['text'] === '(') {
                 $isCall = $prev === null || !in_array($prev['id'], [T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION, T_NEW, T_CONST, T_NS_SEPARATOR], true);
+                // PHP 7.4 : « \each( » est découpé en T_NS_SEPARATOR + T_STRING.
+                // C'est un appel global si rien ne précède la barre oblique.
+                if (!$isCall && $prev['id'] === T_NS_SEPARATOR) {
+                    $before = isset($tokens[$i - 2]) ? $tokens[$i - 2] : null;
+                    $isCall = $before === null || !in_array($before['id'], [T_STRING, T_NAMESPACE, T_NEW, T_FUNCTION], true);
+                }
                 if ($isCall) {
                     $this->checkFunctionCall($text, $file, $token['line']);
                 }
                 continue;
             }
 
-            // Constantes du core référencées sans préfixe de classe.
-            if ($next !== null && ($next['id'] === T_DOUBLE_COLON)) {
+            // Une constante de classe n'est jamais accessible sans son préfixe
+            // (Classe::, self::, static::). L'ancien contrôle « constante sans
+            // préfixe » rapprochait donc n'importe quel identifiant en
+            // majuscules (ERROR, WARNING, DEBUG, INFO, PASSWORD_LENGTH...) d'une
+            // constante retirée du core, et signalait en ERREUR du code légitime
+            // comme LogLevel::WARNING, \Monolog\Logger::DEBUG ou const ERROR = 3.
+            // Les références préfixées sont traitées plus haut.
+        }
+    }
+
+    /**
+     * Reconstitue le nom de classe tel qu'écrit avant « :: ».
+     *
+     * Sous PHP 8 le nom complet tient dans un seul token. Sous PHP 7.4 il est
+     * découpé en T_STRING / T_NS_SEPARATOR : on remonte alors les segments.
+     *
+     * @param  array $tokens Liste de tokens.
+     * @param  int   $index  Index du dernier segment (celui suivi de « :: »).
+     * @return string Nom écrit, avec sa barre oblique initiale éventuelle.
+     */
+    private function writtenName(array $tokens, $index)
+    {
+        $name = $tokens[$index]['text'];
+        $j = $index - 1;
+        while ($j >= 0 && $tokens[$j]['id'] === T_NS_SEPARATOR) {
+            $name = '\\' . $name;
+            if ($j - 1 >= 0 && in_array($tokens[$j - 1]['id'], [T_STRING, T_NAMESPACE], true)) {
+                $name = $tokens[$j - 1]['text'] . $name;
+                $j -= 2;
                 continue;
             }
-            // Constante du core utilisee sans prefixe de classe (ex. un nom de
-            // constante globale importe). L'index plat associe le nom de la
-            // constante a la classe qui la portait et a la version de retrait.
-            if (strtoupper($text) === $text && strlen($text) > 3 && isset($this->knowledge['index_const_names'][$lower])) {
-                $info = $this->knowledge['index_const_names'][$lower];
-                $this->add(
-                    'removed-constant',
-                    $file,
-                    $token['line'],
-                    sprintf(
-                        'La constante %s::%s a été supprimée en PrestaShop %s.',
-                        $info['class'],
-                        $info['name'],
-                        $info['version']
-                    ),
-                    'Vérifier la valeur de remplacement dans le code source de PrestaShop 9.'
-                );
-            }
+            break;
         }
+
+        return $name;
+    }
+
+    /**
+     * Résout un nom de classe écrit dans le code et choisit la clé de recherche
+     * dans la base de connaissances.
+     *
+     * - Nom global (Tools, \Tools, alias use Tools as T) : clé courte « Tools ».
+     * - Nom non qualifié dans un namespace, sans import : PHP le résoudrait dans
+     *   le namespace du fichier ; on garde la clé courte, comme auparavant, car
+     *   c'est presque toujours un oubli de « use Tools; ».
+     * - Nom réellement qualifié (Vendor\Lib\Tools) : clé complète, pour ne pas
+     *   confondre une classe tierce avec une classe homonyme du core.
+     *
+     * @param  string         $written Nom tel qu'écrit.
+     * @param  Ps9SymbolTable $table   Table de symboles du fichier.
+     * @return array ['resolved' => string, 'lookup' => string]
+     */
+    private function resolveClass($written, Ps9SymbolTable $table)
+    {
+        $namespace = $table->namespaceName();
+        $resolved = ltrim(Ps9SymbolTable::resolveName($written, $namespace, $table->imports()), '\\');
+        $lookup = $resolved;
+        if (strpos($resolved, '\\') !== false
+            && strpos($written, '\\') === false
+            && $namespace !== ''
+            && strcasecmp($resolved, $namespace . '\\' . $written) === 0
+        ) {
+            $lookup = $written;
+        }
+
+        return ['resolved' => $resolved, 'lookup' => $lookup];
     }
 
     /**
      * Vérifie un appel statique de type Classe::methode().
      *
-     * @param string $class      Nom de classe écrit dans le code.
-     * @param string $method     Nom de la méthode appelée.
-     * @param string $file       Chemin relatif.
-     * @param int    $line       Ligne de l'appel.
-     * @param array  $tokens     Liste complète des tokens.
-     * @param int    $index      Index du nom de classe dans la liste.
+     * @param string         $class  Nom de classe écrit dans le code.
+     * @param string         $method Nom de la méthode appelée.
+     * @param string         $file   Chemin relatif.
+     * @param int            $line   Ligne de l'appel.
+     * @param Ps9SymbolTable $table  Table de symboles du fichier.
      */
-    private function checkStaticCall($class, $method, $file, $line, array $tokens, $index)
+    private function checkStaticCall($class, $method, $file, $line, Ps9SymbolTable $table)
     {
         if (in_array(strtolower($class), ['self', 'static', 'parent'], true)) {
             return;
         }
-        $this->checkRemovedMethod($class, $method, $file, $line);
-        $this->checkRemovedClass($class, $file, $line, 'static');
+        $names = $this->resolveClass($class, $table);
+        if ($this->isOwnClass($names['resolved'])) {
+            return;
+        }
+        $this->checkRemovedMethod($names['lookup'], $method, $file, $line);
+        $this->checkRemovedClass($names['lookup'], $file, $line, 'static');
     }
 
     /**
      * Verifie une constante de classe du core : Class::CONSTANTE.
      *
-     * @param string $class    Nom de classe ecrit dans le code.
-     * @param string $constant Nom de la constante.
-     * @param string $file     Chemin relatif.
-     * @param int    $line     Ligne de la reference.
+     * @param string         $class    Nom de classe ecrit dans le code.
+     * @param string         $constant Nom de la constante.
+     * @param string         $file     Chemin relatif.
+     * @param int            $line     Ligne de la reference.
+     * @param Ps9SymbolTable $table    Table de symboles du fichier.
      */
-    private function checkStaticConstant($class, $constant, $file, $line)
+    private function checkStaticConstant($class, $constant, $file, $line, Ps9SymbolTable $table)
     {
-        $classKey = strtolower(ltrim($class, '\\'));
+        if (in_array(strtolower($class), ['self', 'static', 'parent'], true)) {
+            return;
+        }
+        $names = $this->resolveClass($class, $table);
+        if ($this->isOwnClass($names['resolved'])) {
+            return;
+        }
+        $classKey = strtolower($names['lookup']);
         $constKey = strtolower($constant);
         if (!isset($this->knowledge['index_consts'][$classKey][$constKey])) {
             return;
@@ -648,7 +847,7 @@ final class Ps9Scanner
             $line,
             sprintf(
                 'La constante %s::%s a été supprimée en PrestaShop %s.',
-                $class,
+                $names['lookup'],
                 $info['name'],
                 $info['version']
             ),
@@ -711,7 +910,31 @@ final class Ps9Scanner
      */
     private function checkRemovedMethod($class, $method, $file, $line)
     {
-        $short = substr($class, strrpos($class, '\\') === false ? 0 : strrpos($class, '\\') + 1);
+        $class = ltrim($class, '\\');
+        $methodKey = strtolower($method);
+
+        // Classe du core namespacée (PrestaShop\..., PrestaShopBundle\...) :
+        // la base les range à part, sous leur nom complet. Ces entrées étaient
+        // chargées mais jamais consultées.
+        if (strpos($class, '\\') !== false) {
+            $fullKey = strtolower($class);
+            if (isset($this->knowledge['index_namespaced_methods'][$fullKey][$methodKey])) {
+                $info = $this->knowledge['index_namespaced_methods'][$fullKey][$methodKey]['entry'];
+                $version = is_array($info) && isset($info[2]) ? $info[2] : '9.0';
+                $short = substr($class, strrpos($class, '\\') + 1);
+                $this->add(
+                    'removed-method',
+                    $file,
+                    $line,
+                    sprintf('%s::%s() a été supprimée en PrestaShop %s.', $short, $method, $version),
+                    Ps9Rules::hintForMethod($short, $method)
+                );
+            }
+
+            return;
+        }
+
+        $short = $class;
         $key = strtolower($short);
         $candidates = [$key, $key . 'core'];
         foreach ($candidates as $candidate) {
@@ -747,8 +970,11 @@ final class Ps9Scanner
      */
     private function checkRemovedClass($class, $file, $line, $context)
     {
-        $short = substr($class, strrpos($class, '\\') === false ? 0 : strrpos($class, '\\') + 1);
-        $lower = strtolower($short);
+        $class = ltrim($class, '\\');
+        // Nom qualifié : clé complète (les classes namespacées du core y sont
+        // rangées sous leur nom complet). Nom global : clé courte.
+        $display = $class;
+        $lower = strtolower($class);
         if (!isset($this->knowledge['index_classes'][$lower])) {
             return;
         }
@@ -759,11 +985,11 @@ final class Ps9Scanner
             $line,
             sprintf(
                 'La classe %s a été supprimée en PrestaShop %s (%s).',
-                $short,
+                $display,
                 $info[0],
                 $this->describeContext($context)
             ),
-            Ps9Rules::hintForClass($short)
+            Ps9Rules::hintForClass($display)
         );
     }
 
@@ -903,7 +1129,11 @@ final class Ps9Scanner
                     $file,
                     $number,
                     'L\'inclusion s\'appuie sur $tpl_dir, dont la valeur dépend du thème actif. Sur Hummingbird, le chemin peut ne plus correspondre.',
-                    'Inclure le template par un chemin relatif au module : {include file=\'module:monmodule/views/templates/...\'}.'
+                    // Le conseil dépend de la cible : un thème inclut ses propres
+                    // gabarits, il n'a pas de chemin « module: ».
+                    $this->targetType()
+                        ? 'Inclure le gabarit par un chemin relatif au thème : {include file=\'_partials/...\'} (ou \'parent:...\' pour un thème enfant).'
+                        : 'Inclure le template par un chemin relatif au module : {include file=\'module:monmodule/views/templates/...\'}.'
                 );
             }
             foreach (Ps9Rules::smartyRemovedAll() as $construct => $explanation) {
@@ -1222,6 +1452,89 @@ final class Ps9Scanner
             return;
         }
 
+        // Nom et version du thème, pour l'en-tête du rapport (un thème n'a pas
+        // de config.xml : le titre restait sans nom ni version).
+        if ($this->module['name'] === null && preg_match('/^name:\s*["\']?([^"\'\r\n#]+)/m', $content, $m)) {
+            $this->module['name'] = trim($m[1]);
+        }
+        if ($this->module['version'] === null && preg_match('/^version:\s*["\']?([^"\'\r\n#]+)/m', $content, $m)) {
+            $this->module['version'] = trim($m[1]);
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', $content);
+
+        // Borne meta.compatibility.to : un thème qui plafonne sous PrestaShop 9
+        // est signalé comme incompatible.
+        $inCompatibility = null;
+        foreach ($lines as $number => $line) {
+            if (preg_match('/^(\s*)compatibility:\s*$/', $line, $m)) {
+                $inCompatibility = strlen($m[1]);
+                continue;
+            }
+            if ($inCompatibility === null || trim($line) === '') {
+                continue;
+            }
+            preg_match('/^(\s*)/', $line, $indent);
+            if (strlen($indent[1]) <= $inCompatibility) {
+                $inCompatibility = null;
+                continue;
+            }
+            if (preg_match('/^\s*to:\s*["\']?([0-9][0-9.]*)/', $line, $m) && $this->maxExcludesTarget($m[1])) {
+                $this->add(
+                    'theme-compliancy',
+                    $file,
+                    $number + 1,
+                    sprintf(
+                        'Le thème se déclare compatible jusqu\'à PrestaShop %s seulement (meta.compatibility.to).',
+                        $m[1]
+                    ),
+                    'Relever meta.compatibility.to après avoir testé le thème sur PrestaShop 9.'
+                );
+            }
+        }
+
+        // Hooks greffés par le thème (global_settings.hooks.modules_to_hook) :
+        // un hook supprimé du core ne sera plus jamais déclenché.
+        $hooksIndent = null;
+        $childIndent = null;
+        foreach ($lines as $number => $line) {
+            if (preg_match('/^(\s*)modules_to_hook:\s*$/', $line, $m)) {
+                $hooksIndent = strlen($m[1]);
+                $childIndent = null;
+                continue;
+            }
+            if ($hooksIndent === null || trim($line) === '' || preg_match('/^\s*#/', $line)) {
+                continue;
+            }
+            preg_match('/^(\s*)/', $line, $indent);
+            $width = strlen($indent[1]);
+            if ($width <= $hooksIndent) {
+                $hooksIndent = null;
+                continue;
+            }
+            if ($childIndent === null) {
+                $childIndent = $width;
+            }
+            if ($width !== $childIndent || !preg_match('/^\s*["\']?([A-Za-z0-9_]+)["\']?:/', $line, $m)) {
+                continue;
+            }
+            $key = strtolower($m[1]);
+            if (isset($this->knowledge['index_hooks'][$key])) {
+                $info = $this->knowledge['index_hooks'][$key];
+                $this->add(
+                    'theme-hook',
+                    $file,
+                    $number + 1,
+                    sprintf(
+                        'Le thème greffe des modules sur le hook %s, supprimé en PrestaShop %s : ils ne s\'afficheront plus.',
+                        $info['name'],
+                        $info['version']
+                    ),
+                    'Greffer ces modules sur le hook qui remplace celui-ci dans PrestaShop 9.'
+                );
+            }
+        }
+
         // Framework CSS : Bootstrap 4 est remplacé par Bootstrap 5 dans
         // PrestaShop 9 (thème Hummingbird). Le thème historique utilise BS4.
         if (preg_match('/framework:\s*["\']?([^"\'\r\n]+)/i', $content, $m)) {
@@ -1270,7 +1583,7 @@ final class Ps9Scanner
         if ($max === null) {
             return;
         }
-        if (version_compare(preg_replace('/[^0-9.]/', '', $max), Ps9Rules::pattern('ps_version_target'), '<')) {
+        if ($this->maxExcludesTarget($max)) {
             $this->add(
                 'compliancy',
                 'config.xml',
@@ -1440,6 +1753,17 @@ final class Ps9Scanner
             $knowledge['index_methods'][strtolower($class)] = [];
             foreach ($methods as $method => $entry) {
                 $knowledge['index_methods'][strtolower($class)][strtolower($method)] = [
+                    'name' => $method,
+                    'entry' => $entry,
+                ];
+            }
+        }
+        $knowledge['index_namespaced_methods'] = [];
+        foreach ($knowledge['namespacedMethods'] as $class => $methods) {
+            $classKey = strtolower(ltrim($class, '\\'));
+            $knowledge['index_namespaced_methods'][$classKey] = [];
+            foreach ($methods as $method => $entry) {
+                $knowledge['index_namespaced_methods'][$classKey][strtolower($method)] = [
                     'name' => $method,
                     'entry' => $entry,
                 ];

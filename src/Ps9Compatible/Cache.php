@@ -24,7 +24,7 @@
 final class Ps9Cache
 {
     /** Version du format de cache : un changement invalide les anciens fichiers. */
-    const FORMAT = 3;
+    const FORMAT = 4;
 
     /** @var string Chemin du fichier d'index. */
     private $file;
@@ -40,6 +40,14 @@ final class Ps9Cache
 
     /** @var array Statistiques d'utilisation du cache. */
     private $stats = ['hits' => 0, 'misses' => 0, 'stale' => 0];
+
+    /**
+     * @var string Empreinte du contexte d'analyse (version du moteur, classes
+     *             déclarées par le module). Les constats d'un fichier dépendent
+     *             aussi de ce contexte : une entrée écrite sous un autre
+     *             contexte est considérée comme périmée.
+     */
+    private $context = '';
 
     /**
      * @param string $directory Dossier de cache.
@@ -75,6 +83,16 @@ final class Ps9Cache
     }
 
     /**
+     * Fixe l'empreinte du contexte d'analyse.
+     *
+     * @param string $context Empreinte calculée par le scanner.
+     */
+    public function setContext($context)
+    {
+        $this->context = (string) $context;
+    }
+
+    /**
      * Indique si le cache peut être utilisé pour ce contenu.
      *
      * @param  string $relativePath Chemin relatif du fichier.
@@ -93,7 +111,8 @@ final class Ps9Cache
             return null;
         }
         $hash = hash('sha256', $content);
-        if ($this->entries[$relativePath]['hash'] !== $hash) {
+        $entryContext = isset($this->entries[$relativePath]['context']) ? $this->entries[$relativePath]['context'] : '';
+        if ($this->entries[$relativePath]['hash'] !== $hash || $entryContext !== $this->context) {
             ++$this->stats['stale'];
 
             return null;
@@ -119,6 +138,7 @@ final class Ps9Cache
         $this->entries[$relativePath] = [
             'hash' => hash('sha256', $content),
             'findings' => $findings,
+            'context' => $this->context,
             'scanned_at' => time(),
         ];
     }

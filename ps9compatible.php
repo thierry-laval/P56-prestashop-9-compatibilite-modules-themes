@@ -1,6 +1,6 @@
 <?php
 /**
- * Scanner de compatibilité PrestaShop 9 pour modules — Version 2.0.0
+ * Scanner de compatibilité PrestaShop 9 pour modules — Version 2.0.1
  *
  * La version affichée dans le rapport provient de la constante PS9COMPATIBLE_VERSION
  * définie plus bas (source unique de vérité) : ne modifiez que celle-ci.
@@ -24,12 +24,13 @@
  *   que ce qui a réellement changé (--cache / --no-cache)
  * - Sorties texte, JSON, Markdown et SARIF, avec seuil d'échec configurable (--fail-on)
  * - Codes de sortie exploitables en CI : 0 = conforme, 1 = problèmes, 2 = erreur d'usage
- * - Interface web autonome (index.php) et ligne de commande, sans aucune API externe
+ * - Interface web autonome (dossier web/, PHP compilé en WebAssembly) et ligne de
+ *   commande, sans aucune API externe
  *
  * @author    Thierry Laval <https://thierrylaval.dev/>
  * @copyright 2007-2026 Thierry Laval
  * @license   http://opensource.org/licenses/afl-3.0.php Academic Free License (AFL 3.0)
- * @version   2.0.0
+ * @version   2.0.1
  * @package   Ps9Compatible
  *
  * UTILISATION EN LIGNE DE COMMANDE :
@@ -48,9 +49,8 @@
  *   --stats                      Afficher les statistiques d'analyse
  *
  * UTILISATION WEB :
- *   Déposez le projet à la racine de votre boutique ou dans un sous-domaine, puis
- *   ouvrez index.php. Le module est envoyé par formulaire, analysé en mémoire, et
- *   aucun fichier n'est conservé sur le serveur.
+ *   L'interface du dossier web/ exécute ce même script dans le navigateur grâce à
+ *   PHP compilé en WebAssembly : aucun fichier n'est envoyé sur un serveur.
  *
  * AVERTISSEMENT :
  * Un audit statique ne remplace jamais un test réel : il oriente les vérifications,
@@ -73,7 +73,7 @@ ini_set('display_errors', '0');
 
 // Version du moteur. Elle est affichée dans le rapport et comparée à celle de la
 // base de connaissances : si elles divergent, un avertissement est signalé.
-const PS9COMPATIBLE_VERSION = '2.0.0';
+const PS9COMPATIBLE_VERSION = '2.0.1';
 const PS9COMPATIBLE_DATA_VERSION = '1.0.0';
 
 // Le scan de gros modules peut dépasser la limite par défaut de 30 secondes.

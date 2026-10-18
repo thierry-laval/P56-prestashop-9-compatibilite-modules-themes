@@ -5,6 +5,9 @@ import {
   unzip,
   runScan,
   parseReport,
+  singleRootName,
+  stripSingleRootFolder,
+  safeTargetName,
 } from './scanner.js';
 
 const els = {
@@ -29,7 +32,7 @@ const els = {
 
 /** @type {Array<{path: string, data: Uint8Array}>|null} */
 let currentFiles = null;
-/** @type {string} */
+/** @type {string} Nom reel de la cible (dossier racine du ZIP ou dossier choisi). */
 let currentLabel = '';
 /** @type {string} */
 let lastOutput = '';
@@ -109,7 +112,7 @@ async function acceptFiles(files, label) {
     els.errorPanel.hidden = true;
     setStatus('Lecture des fichiers…');
     currentFiles = files;
-    currentLabel = label;
+    currentLabel = safeTargetName(label);
     moduleLoaded = true;
     els.optionsPanel.hidden = false;
     els.btnScan.disabled = false;
@@ -130,8 +133,10 @@ async function handleZipFile(file) {
     setStatus('Extraction de l’archive…');
     const buffer = await file.arrayBuffer();
     const files = await unzip(buffer);
-    const { stripSingleRootFolder } = await import('./scanner.js');
-    await acceptFiles(stripSingleRootFolder(files), file.name);
+    // Le nom de la cible est celui du dossier racine du ZIP (le nom technique
+    // du module), a defaut celui de l'archive.
+    const name = singleRootName(files) || file.name;
+    await acceptFiles(stripSingleRootFolder(files), name);
   } catch (err) {
     setStatus('Archive illisible.', 'error');
     showError(err && err.message ? err.message : String(err));
@@ -142,8 +147,18 @@ async function handleDirectoryInput(fileList) {
   if (!fileList || fileList.length === 0) {
     return;
   }
-  const files = await readFilesFromInput(fileList);
-  await acceptFiles(files, fileList[0].webkitRelativePath || 'cible');
+  // webkitRelativePath vaut « monmodule/config.xml » : seul le premier segment
+  // est le nom du dossier choisi. L'ancien code prenait le chemin complet du
+  // premier fichier, d'ou un rapport nomme « ps9compatible-monmodule_config.txt ».
+  const first = fileList[0].webkitRelativePath || '';
+  const name = first.split('/')[0] || 'cible';
+  try {
+    const files = await readFilesFromInput(fileList);
+    await acceptFiles(files, name);
+  } catch (err) {
+    setStatus('Lecture du dossier impossible.', 'error');
+    showError(err && err.message ? err.message : String(err));
+  }
 }
 
 async function runTheScan() {
@@ -159,6 +174,7 @@ async function runTheScan() {
     setStatus('Analyse en cours…');
     await ensurePhp();
     const result = await runScan(currentFiles, {
+      name: currentLabel,
       format,
       includeVendor: els.optVendor.checked,
       minSeverity: els.optSeverity.value,
@@ -176,7 +192,12 @@ async function runTheScan() {
     els.output.textContent = result.stdout;
     els.resultsPanel.hidden = false;
     renderSummary(result.stdout, format);
-    setStatus(`Analyse terminée en ${result.durationMs} ms (code ${result.exitCode}).`);
+    // Le code de sortie du CLI (0 ou 1) n'a pas de sens pour un visiteur.
+    setStatus(
+      result.exitCode === 0
+        ? `Analyse terminée en ${result.durationMs} ms : aucune erreur bloquante.`
+        : `Analyse terminée en ${result.durationMs} ms : au moins une erreur bloquante.`
+    );
   } catch (err) {
     setStatus('Analyse échouée.', 'error');
     showError(err && err.message ? err.message : String(err));
@@ -191,10 +212,12 @@ function renderSummary(stdout, format) {
   // En JSON, la structure est explicite.
   const report = format === 'json' ? parseReport(stdout) : null;
   if (report && report.summary) {
+    const hidden = report.scan && report.scan.hidden ? report.scan.hidden : null;
     counts = {
       error: report.summary.error,
       warning: report.summary.warning,
       notice: report.summary.notice,
+      hidden: hidden ? (Number(hidden.error) || 0) + (Number(hidden.warning) || 0) + (Number(hidden.notice) || 0) : 0,
     };
   } else {
     // Sinon on relit la ligne de synthese du rapport texte :
@@ -213,6 +236,11 @@ function renderSummary(stdout, format) {
     ['avertissement', counts.warning, 'warning'],
     ['remarque', counts.notice, 'notice'],
   ];
+  // Constats masques par la gravite minimale : sans ce badge, un module dont
+  // les hooks ont disparu affichait « 0 avertissement » au seuil « Erreur ».
+  if (counts.hidden > 0) {
+    parts.push(['masqué', counts.hidden, 'hidden']);
+  }
   els.summary.innerHTML = parts
     .map(([word, count, kind]) => {
       const n = Number(count) || 0;
@@ -241,15 +269,20 @@ function parseCountsFromText(stdout) {
     const m = line.match(new RegExp('(\\d+)\\s*' + word, 'i'));
     return m ? Number(m[1]) : 0;
   };
+  // Ligne optionnelle ecrite par le CLI quand --min-severity masque des constats :
+  // « N constat(s) masqué(s) par le seuil error : ... ».
+  const hiddenLine = stdout.split('\n').find((l) => /constat\(s\)\s*masqu/i.test(l));
+  const hiddenMatch = hiddenLine ? hiddenLine.match(/(\d+)\s*constat/i) : null;
   return {
     error: pick('erreur'),
     warning: pick('alerte'),
     notice: pick('remarque'),
+    hidden: hiddenMatch ? Number(hiddenMatch[1]) : 0,
   };
 }
 
 function downloadName() {
-  const base = (currentLabel || 'cible').replace(/\.[^.]+$/, '');
+  const base = currentLabel || 'cible';
   const ext = { text: 'txt', json: 'json', md: 'md', sarif: 'sarif' }[els.optFormat.value] || 'txt';
   return `ps9compatible-${base}.${ext}`;
 }
@@ -321,14 +354,30 @@ function wireEvents() {
   });
 
   els.dropZone.addEventListener('keydown', (e) => {
+    // Seule la zone elle-meme ouvre le selecteur ZIP. Sans ce test, Entree sur
+    // le champ « Choisir un dossier » (qui remonte jusqu'ici) ouvrait le
+    // selecteur de ZIP a la place du selecteur de dossier.
+    if (e.target !== els.dropZone) {
+      return;
+    }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       els.fileZip.click();
     }
   });
 
-  els.fileZip.addEventListener('change', () => handleZipFile(els.fileZip.files[0]));
-  els.fileDir.addEventListener('change', () => handleDirectoryInput(els.fileDir.files));
+  // On vide le champ apres lecture : sinon choisir a nouveau le meme fichier
+  // (apres une correction, ou apres une erreur) ne declenche aucun evenement.
+  els.fileZip.addEventListener('change', () => {
+    const file = els.fileZip.files[0];
+    els.fileZip.value = '';
+    handleZipFile(file);
+  });
+  els.fileDir.addEventListener('change', () => {
+    const list = Array.from(els.fileDir.files || []);
+    els.fileDir.value = '';
+    handleDirectoryInput(list);
+  });
   // Certains navigateurs n'ouvrent pas le selecteur si le label n'a pas de
   // `for` explicite pointant vers l'input. On force donc l'ouverture en JS,
   // et on empeche la double ouverture (label natif + appel JS).
@@ -379,7 +428,12 @@ function wireEvents() {
       setStatus('Aucun rapport à télécharger.', 'error');
       return;
     }
-    const blob = new Blob([lastOutput], { type: 'text/plain;charset=utf-8' });
+    const mime = {
+      json: 'application/json',
+      sarif: 'application/sarif+json',
+      md: 'text/markdown',
+    }[els.optFormat.value] || 'text/plain';
+    const blob = new Blob([lastOutput], { type: `${mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -457,11 +511,10 @@ function readEntryTree(entries) {
     readers.push(entry.isDirectory ? readDir(entry) : readFile(entry));
   }
 
-  return Promise.all(readers).then(async () => {
+  return Promise.all(readers).then(() => {
     if (files.length === 0) {
       throw new Error("Aucun fichier n'a pu être lu dans le dossier déposé.");
     }
-    const { stripSingleRootFolder } = await import('./scanner.js');
     return stripSingleRootFolder(files);
   });
 }

@@ -44,6 +44,22 @@ final class Ps9SymbolTable
     /** Profondeur d'accolade courante, utilisée pour délimiter les corps de méthode. */
     private $depth = 0;
 
+    /** Vrai si le fichier est une surcharge (dossier override/). */
+    private $isOverride = false;
+
+    /**
+     * Classes déclarées avec leur nom complet (namespace inclus) et leur parent.
+     * Sert au scanner à reconnaître les classes écrites par le module lui-même,
+     * même quand elles portent le nom d'une classe retirée du core.
+     */
+    private $declared = [];
+
+    /**
+     * Déclaration $this->ps_versions_compliancy repérée dans le fichier :
+     * ['max' => chaîne littérale ou null si dynamique, 'line' => int], ou null.
+     */
+    private $compliancy = null;
+
     /**
      * Construit la table de symboles à partir de la liste de tokens nettoyée.
      *
@@ -143,6 +159,10 @@ final class Ps9SymbolTable
                     }
                 }
                 $key = strtolower($name);
+                $this->declared[] = [
+                    'fqcn' => $this->namespace === '' ? $name : $this->namespace . '\\' . $name,
+                    'parent' => $parent,
+                ];
                 $this->classes[$key] = [
                     'name' => $name,
                     'parent' => $parent,
@@ -189,6 +209,55 @@ final class Ps9SymbolTable
                         'line' => $tokens[$j]['line'],
                     ];
                 }
+                continue;
+            }
+
+            // registerHook(['displayTop', 'displayHome']) ou registerHook(array(...)) :
+            // PrestaShop accepte une liste de hooks. Seule la forme « chaîne
+            // seule » était lue ; une liste passait entièrement inaperçue.
+            if (
+                $id === T_STRING
+                && strtolower($text) === 'registerhook'
+                && isset($tokens[$i + 2])
+                && $tokens[$i + 1]['text'] === '('
+                && ($tokens[$i + 2]['text'] === '[' || $tokens[$i + 2]['id'] === T_ARRAY)
+            ) {
+                foreach ($this->readArrayStrings($tokens, $i + 2) as $hook) {
+                    $this->hooks[] = $hook;
+                }
+                continue;
+            }
+
+            // Listes de hooks préparées à l'avance, puis enregistrées en boucle :
+            //   const HOOKS = [...];  private $hooks = [...];  $hooks = [...];
+            //   $this->hooks = [...];
+            // Le nom de la constante ou de la variable doit contenir « hook ».
+            // Seuls les noms présents dans la liste des hooks supprimés produisent
+            // un constat : le risque de faux positif reste donc très faible.
+            if ($this->isHookListDeclaration($tokens, $i)) {
+                $j = $i + 1;
+                while (isset($tokens[$j]) && $tokens[$j]['text'] !== '=') {
+                    ++$j;
+                }
+                if (isset($tokens[$j + 1]) && ($tokens[$j + 1]['text'] === '[' || $tokens[$j + 1]['id'] === T_ARRAY)) {
+                    foreach ($this->readArrayStrings($tokens, $j + 1) as $hook) {
+                        $this->hooks[] = $hook;
+                    }
+                }
+                continue;
+            }
+
+            // $this->ps_versions_compliancy = ['min' => ..., 'max' => '8.99.99'];
+            // $this->ps_versions_compliancy['max'] = '8.99.99';
+            // C'est cette propriété (et non config.xml) que PrestaShop lit pour
+            // refuser l'installation d'un module hors de ses bornes.
+            if (
+                $id === T_STRING
+                && strtolower($text) === 'ps_versions_compliancy'
+                && $i > 0
+                && $tokens[$i - 1]['id'] === T_OBJECT_OPERATOR
+            ) {
+                $this->readCompliancy($tokens, $i);
                 continue;
             }
 
@@ -275,10 +344,15 @@ final class Ps9SymbolTable
         }
         $buffer = '';
         foreach ($statement as $token) {
-            $buffer .= $token['text'];
+            // Les espaces ont été retirés par le tokenizer : « use Tools as T »
+            // devenait « ToolsasT », et aucun alias n'était jamais reconnu.
+            // On réinsère des espaces autour du mot-clé « as ».
+            $buffer .= $token['id'] === T_AS ? ' as ' : $token['text'];
         }
         // Forme compacte : use Foo\{Bar, Baz};
-        if (preg_match('/^(.*?)\\\\\?\\{(.*)\\}$/s', $buffer, $matches)) {
+        // L'ancienne expression ('\\\\\?') exigeait un « ? » littéral après la
+        // barre oblique : la forme groupée n'était jamais reconnue.
+        if (preg_match('/^(.*?)\\\\?\\{(.*)\\}$/s', $buffer, $matches)) {
             foreach (explode(',', $matches[2]) as $part) {
                 $full = trim($matches[1], '\\') . '\\' . trim($part);
                 $this->registerImport($full);
@@ -520,5 +594,181 @@ final class Ps9SymbolTable
     public function imports()
     {
         return $this->imports;
+    }
+
+    /** Namespace du fichier (chaîne vide pour l'espace global). */
+    public function namespaceName()
+    {
+        return $this->namespace;
+    }
+
+    /**
+     * Classes, interfaces, traits et énumérations déclarés, avec leur nom complet.
+     *
+     * @return array Liste de ['fqcn' => string, 'parent' => string].
+     */
+    public function declaredWithNamespace()
+    {
+        return $this->declared;
+    }
+
+    /**
+     * Déclaration ps_versions_compliancy trouvée dans le fichier.
+     *
+     * @return array|null ['max' => string|null, 'line' => int], ou null si absente.
+     */
+    public function compliancy()
+    {
+        return $this->compliancy;
+    }
+
+    /**
+     * Indique si le token courant ouvre une liste de hooks préparée à l'avance :
+     * constante, propriété ou variable dont le nom contient « hook », suivie
+     * d'une affectation.
+     *
+     * @param  array $tokens Liste de tokens.
+     * @param  int   $index  Index du token courant.
+     * @return bool
+     */
+    private function isHookListDeclaration(array $tokens, $index)
+    {
+        $token = $tokens[$index];
+        if (stripos($token['text'], 'hook') === false) {
+            return false;
+        }
+        $next = isset($tokens[$index + 1]) ? $tokens[$index + 1] : null;
+        if ($next === null || $next['text'] !== '=') {
+            return false;
+        }
+        if ($token['id'] === T_VARIABLE) {
+            return true;
+        }
+        if ($token['id'] !== T_STRING || $index === 0) {
+            return false;
+        }
+        $prev = $tokens[$index - 1];
+        if ($prev['id'] === T_OBJECT_OPERATOR || $prev['id'] === T_CONST) {
+            return true;
+        }
+        // Constante typée (PHP 8.3) : const array HOOKS = [...];
+        return $index > 1 && $tokens[$index - 2]['id'] === T_CONST;
+    }
+
+    /**
+     * Lit les chaînes littérales de premier niveau d'un tableau [...] ou array(...).
+     *
+     * @param  array $tokens Liste de tokens.
+     * @param  int   $start  Index du « [ » ou du mot-clé array.
+     * @return array Liste de ['name' => string, 'line' => int].
+     */
+    private function readArrayStrings(array $tokens, $start)
+    {
+        $out = [];
+        $count = count($tokens);
+        $j = $start;
+        if ($tokens[$j]['id'] === T_ARRAY) {
+            ++$j;
+        }
+        $depth = 0;
+        for (; $j < $count; ++$j) {
+            $text = $tokens[$j]['text'];
+            if ($tokens[$j]['id'] === null && ($text === '[' || $text === '(' || $text === '{')) {
+                ++$depth;
+                continue;
+            }
+            if ($tokens[$j]['id'] === null && ($text === ']' || $text === ')' || $text === '}')) {
+                --$depth;
+                if ($depth <= 0) {
+                    break;
+                }
+                continue;
+            }
+            if ($depth === 1 && $tokens[$j]['id'] === T_CONSTANT_ENCAPSED_STRING) {
+                $name = substr($text, 1, -1);
+                if ($name !== '') {
+                    $out[] = ['name' => $name, 'line' => $tokens[$j]['line']];
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Lit la borne max d'une affectation de ps_versions_compliancy.
+     *
+     * @param array $tokens Liste de tokens.
+     * @param int   $index  Index du token « ps_versions_compliancy ».
+     */
+    private function readCompliancy(array $tokens, $index)
+    {
+        $line = $tokens[$index]['line'];
+        $max = null;
+        $found = false;
+
+        $next = isset($tokens[$index + 1]) ? $tokens[$index + 1]['text'] : '';
+        if ($next === '[') {
+            // Forme $this->ps_versions_compliancy['max'] = '8.99.99';
+            if (isset($tokens[$index + 5])
+                && $tokens[$index + 2]['id'] === T_CONSTANT_ENCAPSED_STRING
+                && strtolower(substr($tokens[$index + 2]['text'], 1, -1)) === 'max'
+                && $tokens[$index + 3]['text'] === ']'
+                && $tokens[$index + 4]['text'] === '='
+            ) {
+                $found = true;
+                $line = $tokens[$index + 5]['line'];
+                if ($tokens[$index + 5]['id'] === T_CONSTANT_ENCAPSED_STRING) {
+                    $max = substr($tokens[$index + 5]['text'], 1, -1);
+                }
+            }
+        } elseif ($next === '=' && isset($tokens[$index + 2])
+            && ($tokens[$index + 2]['text'] === '[' || $tokens[$index + 2]['id'] === T_ARRAY)
+        ) {
+            // Forme $this->ps_versions_compliancy = ['min' => ..., 'max' => ...];
+            $count = count($tokens);
+            $j = $index + 2;
+            if ($tokens[$j]['id'] === T_ARRAY) {
+                ++$j;
+            }
+            $depth = 0;
+            for (; $j < $count; ++$j) {
+                $text = $tokens[$j]['text'];
+                if ($tokens[$j]['id'] === null && ($text === '[' || $text === '(')) {
+                    ++$depth;
+                    continue;
+                }
+                if ($tokens[$j]['id'] === null && ($text === ']' || $text === ')')) {
+                    if (--$depth <= 0) {
+                        break;
+                    }
+                    continue;
+                }
+                if ($depth === 1
+                    && $tokens[$j]['id'] === T_CONSTANT_ENCAPSED_STRING
+                    && strtolower(substr($text, 1, -1)) === 'max'
+                    && isset($tokens[$j + 2])
+                    && $tokens[$j + 1]['id'] === T_DOUBLE_ARROW
+                ) {
+                    $found = true;
+                    $line = $tokens[$j + 2]['line'];
+                    if ($tokens[$j + 2]['id'] === T_CONSTANT_ENCAPSED_STRING) {
+                        $max = substr($tokens[$j + 2]['text'], 1, -1);
+                    }
+                    break;
+                }
+            }
+        } else {
+            return;
+        }
+
+        // Sans clé 'max', PrestaShop retient _PS_VERSION_ : aucune borne haute.
+        if (!$found) {
+            return;
+        }
+        // Une valeur littérale l'emporte sur une valeur dynamique (_PS_VERSION_...).
+        if ($this->compliancy === null || $max !== null) {
+            $this->compliancy = ['max' => $max, 'line' => $line];
+        }
     }
 }
